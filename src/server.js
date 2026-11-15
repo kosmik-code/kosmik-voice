@@ -120,7 +120,9 @@ async function serveFile(res, file) {
     const info = await stat(file);
     if (!info.isFile()) return false;
     const type = TYPES[path.extname(file).toLowerCase()] || "application/octet-stream";
-    send(res, 200, await readFile(file), { "Content-Type": type });
+    // Only our own editor may frame our pages (it embeds the overlay preview).
+    const frame = type.startsWith("text/html") ? { "Content-Security-Policy": "frame-ancestors 'self'" } : {};
+    send(res, 200, await readFile(file), { "Content-Type": type, ...frame });
     return true;
   } catch {
     return false;
@@ -266,6 +268,8 @@ export async function startServer({ port = 7429, host = "127.0.0.1", dataDir, pu
   });
 
   server.on("upgrade", (req, socket, head) => {
+    // A peer can reset the raw socket at any time; without a listener that crashes the process.
+    socket.on("error", () => socket.destroy());
     const url = new URL(req.url, "http://local");
     const hostOk = allowedHosts.has(String(req.headers.host || "").toLowerCase());
     const origin = req.headers.origin ? String(req.headers.origin).toLowerCase() : null;

@@ -206,3 +206,33 @@ test("websocket: hello snapshot, live voice/status/config broadcasts, foreign or
   const code = await new Promise((r) => evil.once("unexpected-response", (req, res) => r(res.statusCode)).once("error", () => r("error")));
   assert.equal(code, 403);
 });
+
+test("rejected WS upgrade followed by a client reset does not crash the server", async () => {
+  const net = await import("node:net");
+  const { port } = new URL(ctx.origin);
+  await new Promise((resolve, reject) => {
+    const s = net.connect(Number(port), "127.0.0.1", () => {
+      s.write(
+        `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nOrigin: https://evil.example\r\n` +
+          "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+      );
+    });
+    s.once("data", (d) => {
+      assert.match(String(d), /^HTTP\/1\.1 403/);
+      s.resetAndDestroy();
+      setTimeout(resolve, 200);
+    });
+    s.on("error", () => {});
+    setTimeout(() => reject(new Error("no response")), 3000);
+  });
+  const res = await fetch(ctx.origin + "/api/config");
+  assert.equal(res.status, 200);
+});
+
+test("pages refuse to be framed by other sites", async () => {
+  for (const p of ["/editor/", "/overlay/main"]) {
+    const res = await fetch(ctx.origin + p);
+    assert.equal(res.headers.get("content-security-policy"), "frame-ancestors 'self'", p);
+  }
+});
