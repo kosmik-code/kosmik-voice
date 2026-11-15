@@ -38,9 +38,11 @@ Discord only lets an application's owner and its testers use local RPC, so you m
 
 1. Go to <https://discord.com/developers/applications> → **New Application**. Any name works, for example `Kosmik Voice`.
 2. **OAuth2** → copy the **Client ID** and **Client Secret** (Reset Secret if needed).
-3. **OAuth2 → Redirects** → add `http://127.0.0.1` and save.
+3. **OAuth2 → Redirects** → add `http://127.0.0.1` and press **Save Changes**. Without a registered redirect, Discord answers the authorization with `Missing "redirect_uri" in request`. The app must not send a redirect itself: Discord rejects that with `Redirect URI cannot be used in the RPC OAuth2 Authorization flow`.
 4. In the editor's **Discord** tab, paste the Application ID and the Client Secret, then save.
 5. Discord shows an authorization popup. Accept it. The status changes to *Conectado*.
+
+If authorization fails, the status turns to *La autorización falló* and the app stops retrying, so Discord does not show one popup after another. Fix the cause, then press **Guardar** to retry.
 
 The secret and the tokens are stored in `data/secrets.json` and are never sent to the browser. To start over, use *Cerrar sesión* in the editor or delete that file.
 
