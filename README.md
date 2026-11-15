@@ -12,9 +12,12 @@ It runs on your PC and talks to your Discord client through **local RPC**, the s
 - Per-user images for idle, talking, muted and deafened (PNG, GIF, WebP, JPG). A missing image falls back to the next one, ending at the live Discord avatar.
 - Talking animations: bounce, shake, pulse or none. Optional glow, dimming while silent, dimming while muted, and mute/deafen badges.
 - Names, roles and role colours. Row, column or grid layouts, with alignment, offsets, gap, padding and size.
+- **Aliases**: show any name on screen instead of the Discord name. Set one per user, or type it straight next to whoever is in your call (**Usuarios › En la llamada ahora**). That also adds the person, with no images needed. An empty alias falls back to the Discord name.
 - Themes: **Pixel café**, which matches the Kosmik overlays, and **Clean**.
+- **Templates** for new presets: *Fila abajo*, *Columna al costado*, *Squad en grilla*, *PNGtuber solo*, *Solo quien habla*, *Burbujas*, *Vertical* and *En blanco*. Pick your OBS canvas in the gallery and the sizes are scaled for it (2K = ×4/3).
+- Each preset remembers its **canvas**: Full HD 1920×1080, **2K 2560×1440**, HD 1280×720 or Vertical 1080×1920. The preview uses it, and the editor tells you the exact width and height to type in OBS.
 - Up to 20 presets with one OBS URL each, up to 50 users, and up to 25 users per preset.
-- Web editor with a live preview at 1920×1080 / 1280×720 / 1080×1920. It can simulate the call: per-user states, everyone talking, rotating speaker, or all states at once.
+- Web editor in plain Spanish, with a **Primeros pasos** checklist (connect Discord → pick a template → add to OBS), the essentials up front and the rest under *Ajustes avanzados*, plus a live preview. The preview can simulate the call: per-user states, everyone talking, rotating speaker, or all states at once.
 - `?demo=1` and `?demo=static` on any overlay URL let you position it in OBS without a call. `?debug=1` shows the connection status.
 
 ## Requirements
@@ -42,14 +45,14 @@ Discord only lets an application's owner and its testers use local RPC, so you m
 4. In the editor's **Discord** tab, paste the Application ID and the Client Secret, then save.
 5. Discord shows an authorization popup. Accept it. The status changes to *Conectado*.
 
-If authorization fails, the status turns to *La autorización falló* and the app stops retrying, so Discord does not show one popup after another. Fix the cause, then press **Guardar** to retry.
+If authorization fails, the status turns to *La autorización falló* and the app stops retrying, so Discord does not show one popup after another. The **Discord** tab explains the known errors in plain words (`Missing redirect_uri`, a refused authorization, Discord closed, `handshake timed out`) and says what to do. The raw message stays under *Detalle técnico*. Fix the cause, then press **Guardar y conectar** to retry.
 
 The secret and the tokens are stored in `data/secrets.json` and are never sent to the browser. To start over, use *Cerrar sesión* in the editor or delete that file.
 
 ## Add it to OBS
 
-1. In the editor, pick a preset and copy its **OBS** URL, for example `http://127.0.0.1:7429/overlay/main`.
-2. In OBS, add **Sources → Browser**, paste the URL, and set width/height to your canvas size (for example 1920×1080). Then position the overlay with the preset's alignment and offsets.
+1. In the editor's **Presets** tab, pick a preset and press **Copiar para OBS**. This copies its URL, for example `http://127.0.0.1:7429/overlay/main`. The card next to the button shows the width and height of the preset's canvas.
+2. In OBS, add **Sources → Browser**, paste the URL, and set that width and height (for example 2560×1440 for a 2K canvas). The preset's canvas should match OBS **Settings → Video → Base (Canvas) Resolution**.
 3. Join a voice channel. The overlay follows whichever channel your Discord client is in.
 
 Kosmik Voice has to be running while you stream. A shortcut to `npm start`, or a Streamer.bot "run program" action, works well.
@@ -59,6 +62,10 @@ Kosmik Voice has to be running while you stream. A shortcut to `npm start`, or a
 Everything is edited in the browser and stored in `data/config.json`. The file is validated before it is written: invalid values are rejected with the field that is wrong, and the previous file stays intact. If the file is corrupted by hand, it is moved aside to `config.broken-<time>.json` and defaults are loaded.
 
 Uploaded images live in `data/assets/`. An image still used by a user cannot be deleted.
+
+Each preset has an optional `canvas` (`1920x1080`, `2560x1440`, `1280x720` or `1080x1920`, default `1920x1080`). Older configs without it stay valid. The canvas only drives the editor preview and the OBS size guidance: the overlay itself fills whatever size OBS gives it.
+
+The editor accepts `?preset=<id>` to open a specific preset, and `?gallery=1` to open the template gallery. The *Primeros pasos* progress (hidden, template picked, URL copied) is remembered per browser in `localStorage`.
 
 Environment variables: `KV_PORT` (default `7429`) and `KV_DATA_DIR` (default `./data`).
 

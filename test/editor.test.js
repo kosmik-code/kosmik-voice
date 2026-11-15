@@ -21,6 +21,16 @@ import {
   setAt,
   knownPaths,
   newPreset,
+  CANVASES,
+  canvasSize,
+  TEMPLATES,
+  presetFromTemplate,
+  callMembers,
+  setAlias,
+  discordHelp,
+  firstSteps,
+  obsSetup,
+  USER_LABELS,
 } from "../public/editor/logic.js";
 import { defaultConfig, defaultPreset, validateConfig } from "../src/config.js";
 import { buildTiles } from "../public/shared/model.js";
@@ -270,4 +280,198 @@ test("knownPaths lists every editable field so any server error path can be plac
 
 test("newPreset builds the same preset the server would default to", () => {
   assert.deepEqual(newPreset("nuevo", "Nuevo"), defaultPreset("nuevo", "Nuevo"));
+});
+
+// ---------------------------------------------------------------- S11 canvas
+
+test("CANVASES mirrors the server canvas enum, 2K labelled", () => {
+  assert.deepEqual(CANVASES.map((c) => c.value).sort(), ["1080x1920", "1280x720", "1920x1080", "2560x1440"]);
+  for (const c of CANVASES) {
+    const cf = defaultConfig();
+    cf.presets[0].canvas = c.value;
+    assert.ok(validateConfig(cf).ok, c.value);
+    assert.equal(`${c.width}x${c.height}`, c.value);
+    assert.ok(c.label);
+  }
+  const bad = defaultConfig();
+  bad.presets[0].canvas = "zzz";
+  assert.equal(validateConfig(bad).ok, false);
+  assert.equal(CANVASES.find((c) => c.value === "2560x1440").label, "2K (2560×1440)");
+  assert.equal(newPreset("x", "X").canvas, defaultPreset("x", "X").canvas);
+  assert.deepEqual(canvasSize("2560x1440"), { width: 2560, height: 1440 });
+  assert.deepEqual(canvasSize(undefined), { width: 1920, height: 1080 });
+  assert.deepEqual(canvasSize("zzz"), { width: 1920, height: 1080 });
+  assert.ok(knownPaths(cfg()).has("presets[0].canvas"));
+});
+
+test("obsSetup gives the overlay URL and the exact width/height of the preset canvas", () => {
+  const p = { ...newPreset("squad", "Squad"), canvas: "2560x1440" };
+  const o = obsSetup(p, "http://127.0.0.1:7429");
+  assert.equal(o.url, "http://127.0.0.1:7429/overlay/squad");
+  assert.equal(o.width, 2560);
+  assert.equal(o.height, 1440);
+  assert.match(o.text, /Ancho 2560.*Alto 1440/);
+  const legacy = newPreset("main", "Principal");
+  delete legacy.canvas;
+  assert.deepEqual([obsSetup(legacy, "").width, obsSetup(legacy, "").height], [1920, 1080]);
+});
+
+// ---------------------------------------------------------------- S12 templates
+
+const REQUIRED_TEMPLATES = ["Fila abajo", "Columna al costado", "Squad en grilla", "PNGtuber solo", "Solo quien habla", "Burbujas", "Vertical", "En blanco"];
+
+test("TEMPLATES include the required ones, each with description and canvas", () => {
+  const names = TEMPLATES.map((tpl) => tpl.name);
+  for (const n of REQUIRED_TEMPLATES) assert.ok(names.includes(n), n);
+  assert.equal(new Set(TEMPLATES.map((tpl) => tpl.key)).size, TEMPLATES.length);
+  for (const tpl of TEMPLATES) {
+    assert.ok(tpl.description && tpl.description.length < 120 && !tpl.description.includes("\n"), tpl.name);
+    assert.ok(CANVASES.some((c) => c.value === tpl.canvas), tpl.name);
+  }
+  const by = Object.fromEntries(TEMPLATES.map((tpl) => [tpl.name, tpl.preset]));
+  assert.equal(TEMPLATES.find((tpl) => tpl.name === "Vertical").canvas, "1080x1920");
+  assert.equal(by["Squad en grilla"].mode, "slots");
+  assert.equal(by["Squad en grilla"].layout.direction, "grid");
+  assert.equal(by["Squad en grilla"].layout.columns, 4);
+  assert.equal(by["PNGtuber solo"].mode, "slots");
+  assert.equal(by["PNGtuber solo"].style.showNames, false);
+  assert.ok(by["PNGtuber solo"].layout.size >= 380);
+  assert.equal(by["Solo quien habla"].style.hideWhenSilent, true);
+  assert.equal(by["Burbujas"].theme, "clean");
+  assert.equal(by["Burbujas"].style.shape, "circle");
+  assert.equal(by["Burbujas"].style.talkAnimation, "pulse");
+  assert.deepEqual([by["Burbujas"].layout.alignX, by["Burbujas"].layout.alignY], ["right", "top"]);
+  assert.deepEqual([by["Columna al costado"].layout.direction, by["Columna al costado"].layout.alignX, by["Columna al costado"].layout.alignY], ["column", "left", "center"]);
+  assert.deepEqual([by["Fila abajo"].layout.alignX, by["Fila abajo"].layout.alignY], ["center", "bottom"]);
+});
+
+test("presetFromTemplate: every template on every canvas yields a valid config with a unique id", () => {
+  for (const tpl of TEMPLATES) {
+    for (const canvas of CANVASES.map((c) => c.value)) {
+      const base = cfg();
+      const r = presetFromTemplate(base, tpl.key, { canvas });
+      assert.ok(!r.error, `${tpl.key} ${canvas}`);
+      const v = validateConfig(r.config);
+      assert.ok(v.ok, `${tpl.key} ${canvas}: ${JSON.stringify(v.errors)}`);
+      assert.equal(r.index, base.presets.length);
+      const ids = r.config.presets.map((p) => p.id);
+      assert.equal(new Set(ids).size, ids.length);
+      assert.equal(r.config.presets[r.index].name, tpl.name);
+      assert.equal(base.presets.length, 2, "input not mutated");
+    }
+  }
+  let c = cfg();
+  c = presetFromTemplate(c, "fila-abajo").config;
+  c = presetFromTemplate(c, "fila-abajo").config;
+  assert.equal(new Set(c.presets.map((p) => p.id)).size, c.presets.length);
+  assert.ok(validateConfig(c).ok);
+});
+
+test("presetFromTemplate scales pixel sizes for 2K and keeps the template canvas for vertical", () => {
+  const fhd = presetFromTemplate(cfg(), "fila-abajo", { canvas: "1920x1080" });
+  const k2 = presetFromTemplate(cfg(), "fila-abajo", { canvas: "2560x1440" });
+  const a = fhd.config.presets[fhd.index];
+  const b = k2.config.presets[k2.index];
+  assert.equal(a.canvas, "1920x1080");
+  assert.equal(b.canvas, "2560x1440");
+  assert.equal(b.layout.size, Math.round((a.layout.size * 4) / 3));
+  assert.equal(b.style.nameSize, Math.round((a.style.nameSize * 4) / 3));
+  assert.equal(b.layout.columns, a.layout.columns);
+  const v = presetFromTemplate(cfg(), "vertical", { canvas: "2560x1440" });
+  assert.equal(v.config.presets[v.index].canvas, "1080x1920");
+  const d = presetFromTemplate(cfg(), "squad");
+  assert.equal(d.config.presets[d.index].canvas, "1920x1080");
+});
+
+test("presetFromTemplate: slots templates take the configured users or ask to add them", () => {
+  const withUsers = presetFromTemplate(cfg(), "squad");
+  assert.deepEqual(withUsers.config.presets[withUsers.index].users, [A, B]);
+  assert.equal(withUsers.needsUsers, false);
+  const solo = presetFromTemplate(cfg(), "pngtuber");
+  assert.deepEqual(solo.config.presets[solo.index].users, [A]);
+  const empty = defaultConfig();
+  const none = presetFromTemplate(empty, "squad");
+  assert.equal(none.needsUsers, true);
+  assert.deepEqual(none.config.presets[none.index].users, []);
+  assert.ok(validateConfig(none.config).ok);
+  assert.equal(presetFromTemplate(empty, "fila-abajo").needsUsers, false);
+});
+
+test("presetFromTemplate refuses past the preset limit and unknown templates", () => {
+  const c = defaultConfig();
+  while (c.presets.length < 20) c.presets.push(newPreset(`p${c.presets.length}`, "P"));
+  assert.equal(presetFromTemplate(c, "fila-abajo").error, "limit");
+  assert.equal(presetFromTemplate(cfg(), "nope").error, "unknown");
+  const blank = presetFromTemplate(defaultConfig(), "blank");
+  const p = blank.config.presets[blank.index];
+  assert.deepEqual({ ...p, id: "x", name: "x" }, newPreset("x", "x"));
+});
+
+// ---------------------------------------------------------------- S13 aliases
+
+test("user displayName is labelled as an on-screen alias", () => {
+  assert.equal(USER_LABELS.displayName, "Alias (cómo aparece en pantalla)");
+  assert.equal(describePath("users[0].displayName", cfg()), "Usuario «Kosmik» › Alias (cómo aparece en pantalla)");
+});
+
+test("callMembers lists live members with their Discord name and current alias", () => {
+  const voice = { channel: { id: "1", name: "General" }, members: [
+    { id: A, name: "kosmik_dc", avatarUrl: "https://cdn/a.png", speaking: true },
+    { id: C, name: "Invitada", avatarUrl: "" },
+  ] };
+  assert.deepEqual(callMembers(voice, cfg()), [
+    { id: A, discordName: "kosmik_dc", avatarUrl: "https://cdn/a.png", alias: "Kosmik", configured: true, speaking: true },
+    { id: C, discordName: "Invitada", avatarUrl: "", alias: "", configured: false, speaking: false },
+  ]);
+  assert.deepEqual(callMembers(null, cfg()), []);
+});
+
+test("setAlias creates, edits and clears aliases within the schema", () => {
+  const m = { id: C, discordName: "Invitada" };
+  const created = setAlias(cfg(), m, "Lu");
+  assert.deepEqual(created.users.at(-1), { id: C, displayName: "Lu", role: "", roleColor: "", images: { idle: "", talking: "", muted: "", deafened: "" } });
+  assert.ok(validateConfig(created).ok);
+  const edited = setAlias(created, m, "L".repeat(60));
+  assert.equal(edited.users.filter((u) => u.id === C).length, 1);
+  assert.equal(edited.users.find((u) => u.id === C).displayName.length, 40);
+  assert.ok(validateConfig(edited).ok);
+  const cleared = setAlias(edited, m, "");
+  assert.equal(cleared.users.find((u) => u.id === C).displayName, "");
+  assert.equal(buildTiles(cleared, cleared.presets[0], { members: [{ id: C, name: "Invitada" }] })[0].name, "Invitada");
+  assert.equal(buildTiles(created, created.presets[0], { members: [{ id: C, name: "Invitada" }] })[0].name, "Lu");
+  assert.equal(setAlias(cfg(), m, "").users.length, 2, "empty alias creates nothing");
+  assert.equal(setAlias(cfg(), { id: "demo-1" }, "X").users.length, 2, "invalid ids ignored");
+  const base = cfg();
+  setAlias(base, { id: A }, "Otro");
+  assert.equal(base.users[0].displayName, "Kosmik", "input not mutated");
+  const full = defaultConfig();
+  for (let n = 0; n < 50; n++) full.users.push(user(String(10n ** 17n + BigInt(n))));
+  assert.equal(setAlias(full, m, "Lu").users.length, 50, "user limit respected");
+});
+
+// ---------------------------------------------------------------- S10 guidance
+
+test("discordHelp explains known Discord errors in plain words", () => {
+  const redirect = discordHelp({ state: "auth_failed", message: 'OAuth2 Error: invalid_request: Missing "redirect_uri" in request.' });
+  assert.match(redirect.title, /redirect/i);
+  assert.ok(redirect.steps.some((s) => /Save Changes/.test(s)));
+  assert.ok(redirect.steps.some((s) => s.includes("http://127.0.0.1")));
+  assert.ok(discordHelp({ state: "auth_failed", message: "denied" }).title);
+  assert.match(discordHelp({ state: "discord_closed", message: "x" }).title, /Discord/);
+  assert.ok(discordHelp({ state: "error", message: "handshake timed out" }).steps.length);
+  assert.equal(discordHelp({ state: "ready", message: "" }), null);
+  assert.equal(discordHelp(null), null);
+});
+
+test("firstSteps reports live completion for connect, preset and OBS", () => {
+  const fresh = firstSteps({ status: { state: "setup_required" }, config: defaultConfig(), flags: {} });
+  assert.deepEqual(fresh.map((s) => s.key), ["discord", "preset", "obs"]);
+  assert.deepEqual(fresh.map((s) => s.done), [false, false, false]);
+  assert.ok(fresh.every((s) => s.label && s.tab));
+  const ready = firstSteps({ status: { state: "ready" }, config: cfg(), flags: { obsCopied: true } });
+  assert.deepEqual(ready.map((s) => s.done), [true, true, true]);
+  const custom = defaultConfig();
+  custom.presets[0].layout.size = 200;
+  assert.equal(firstSteps({ status: null, config: custom, flags: {} })[1].done, true);
+  assert.equal(firstSteps({ status: null, config: defaultConfig(), flags: { templatePicked: true } })[1].done, true);
 });

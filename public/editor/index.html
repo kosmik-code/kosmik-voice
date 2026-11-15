@@ -14,16 +14,18 @@
       <a href="#users" data-tab="users">Usuarios</a>
       <a href="#presets" data-tab="presets">Presets</a>
     </nav>
+    <button id="steps-toggle" type="button" class="small" aria-controls="steps">Primeros pasos</button>
     <span id="conn" class="pill tone-bad" title="Estado de Discord">…</span>
     <div class="save-box">
       <span id="dirty" class="dirty" hidden>● Cambios sin guardar</span>
       <button id="discard" type="button" disabled>Descartar</button>
-      <button id="save" type="button" class="primary" disabled title="Ctrl+S">Guardar</button>
+      <button id="save" type="button" class="primary" disabled title="Ctrl+S">Guardar cambios</button>
     </div>
   </header>
 
   <div id="notice" class="notice" hidden></div>
   <div id="errors" class="errors" hidden></div>
+  <section id="steps" class="steps-bar" aria-label="Primeros pasos" hidden></section>
 
   <main class="layout">
     <section id="panel" class="panel" aria-live="polite"></section>
@@ -32,13 +34,7 @@
       <div class="preview-head">
         <h2>Vista previa</h2>
         <label class="mini">Preset <select id="pv-preset"></select></label>
-        <label class="mini">Lienzo
-          <select id="pv-canvas">
-            <option value="1920x1080">1920×1080</option>
-            <option value="1280x720">1280×720</option>
-            <option value="1080x1920">1080×1920 (vertical)</option>
-          </select>
-        </label>
+        <label class="mini">Lienzo <select id="pv-canvas"></select></label>
         <label class="mini">Fondo
           <select id="pv-bg">
             <option value="checker">Cuadriculado</option>
@@ -55,7 +51,7 @@
       <div class="sim card">
         <div class="sim-head">
           <h3>Simular estados</h3>
-          <div class="seg" role="radiogroup" aria-label="Origen">
+          <div class="seg" role="radiogroup" aria-label="Qué mostrar">
             <label><input type="radio" name="pv-source" value="live"> Llamada real</label>
             <label><input type="radio" name="pv-source" value="sim" checked> Simulación</label>
           </div>
@@ -65,7 +61,8 @@
     </aside>
   </main>
 
-  <div id="toast" class="toast" hidden></div>
+  <dialog id="gallery" class="dialog" aria-labelledby="gallery-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="/editor/editor.js"></script>
 </body>
 </html>

@@ -8,12 +8,12 @@ export const FIELDS = {
   layout: {
     direction: { kind: "enum", def: "row", label: "Dirección", options: opts([["row", "Fila"], ["column", "Columna"], ["grid", "Grilla"]]) },
     columns: { kind: "int", def: 4, min: 1, max: 12, label: "Columnas (grilla)" },
-    alignX: { kind: "enum", def: "left", label: "Alineación horizontal", options: opts([["left", "Izquierda"], ["center", "Centro"], ["right", "Derecha"]]) },
-    alignY: { kind: "enum", def: "top", label: "Alineación vertical", options: opts([["top", "Arriba"], ["center", "Centro"], ["bottom", "Abajo"]]) },
-    offsetX: { kind: "int", def: 0, min: -4000, max: 4000, label: "Desplazamiento X (px)" },
-    offsetY: { kind: "int", def: 0, min: -4000, max: 4000, label: "Desplazamiento Y (px)" },
-    gap: { kind: "int", def: 24, min: 0, max: 400, label: "Separación (px)" },
-    padding: { kind: "int", def: 24, min: 0, max: 400, label: "Margen (px)" },
+    alignX: { kind: "enum", def: "left", label: "Posición horizontal", options: opts([["left", "Izquierda"], ["center", "Centro"], ["right", "Derecha"]]) },
+    alignY: { kind: "enum", def: "top", label: "Posición vertical", options: opts([["top", "Arriba"], ["center", "Centro"], ["bottom", "Abajo"]]) },
+    offsetX: { kind: "int", def: 0, min: -4000, max: 4000, label: "Correr a los costados (px)" },
+    offsetY: { kind: "int", def: 0, min: -4000, max: 4000, label: "Correr arriba/abajo (px)" },
+    gap: { kind: "int", def: 24, min: 0, max: 400, label: "Espacio entre imágenes (px)" },
+    padding: { kind: "int", def: 24, min: 0, max: 400, label: "Distancia al borde (px)" },
     size: { kind: "int", def: 160, min: 32, max: 1024, label: "Tamaño (px)" },
   },
   style: {
@@ -25,25 +25,39 @@ export const FIELDS = {
     talkAnimation: { kind: "enum", def: "bounce", label: "Animación al hablar", options: opts([["bounce", "Rebote"], ["shake", "Temblor"], ["pulse", "Pulso"], ["none", "Ninguna"]]) },
     talkGlow: { kind: "bool", def: true, label: "Resaltar al hablar" },
     talkColor: { kind: "color", def: "#6fc2b0", label: "Color al hablar" },
-    idleDim: { kind: "num", def: 0.65, min: 0, max: 1, step: 0.05, label: "Brillo en silencio" },
-    muteDim: { kind: "num", def: 0.45, min: 0, max: 1, step: 0.05, label: "Brillo muteado" },
-    hideWhenSilent: { kind: "bool", def: false, label: "Ocultar si no habla" },
-    showMuteIcon: { kind: "bool", def: true, label: "Ícono de mute" },
-    offlineText: { kind: "str", def: "OFFLINE", min: 0, max: 24, label: "Texto offline" },
+    idleDim: { kind: "num", def: 0.65, min: 0, max: 1, step: 0.05, label: "Brillo cuando está callado" },
+    muteDim: { kind: "num", def: 0.45, min: 0, max: 1, step: 0.05, label: "Brillo cuando está muteado" },
+    hideWhenSilent: { kind: "bool", def: false, label: "Mostrar solo a quien habla" },
+    showMuteIcon: { kind: "bool", def: true, label: "Ícono de muteado/sordo" },
+    offlineText: { kind: "str", def: "OFFLINE", min: 0, max: 24, label: "Texto cuando no está" },
   },
 };
 
+// Mirror of CANVASES in src/config.js (a test keeps them in sync). First = default.
+export const CANVASES = [
+  { value: "1920x1080", label: "Full HD (1920×1080)", width: 1920, height: 1080 },
+  { value: "2560x1440", label: "2K (2560×1440)", width: 2560, height: 1440 },
+  { value: "1280x720", label: "HD (1280×720)", width: 1280, height: 720 },
+  { value: "1080x1920", label: "Vertical (1080×1920)", width: 1080, height: 1920 },
+];
+
+export function canvasSize(value) {
+  const c = CANVASES.find((x) => x.value === value) ?? CANVASES[0];
+  return { width: c.width, height: c.height };
+}
+
 export const PRESET_LABELS = {
-  id: "ID",
+  id: "Nombre en la dirección (URL)",
   name: "Nombre",
-  mode: "Modo",
+  mode: "Tipo",
   theme: "Tema",
-  users: "Usuarios",
-  showUnlisted: "Mostrar no listados",
+  canvas: "Lienzo de OBS",
+  users: "Personas",
+  showUnlisted: "Mostrar también a quienes no están en la lista",
 };
 export const USER_LABELS = {
   id: "ID de Discord",
-  displayName: "Nombre",
+  displayName: "Alias (cómo aparece en pantalla)",
   role: "Rol",
   roleColor: "Color del rol",
   images: "Imágenes",
@@ -276,7 +290,7 @@ export function assetUsers(config, name) {
 }
 
 const STATUS = {
-  setup_required: ["Falta configurar la app de Discord: cargá el Application ID y el Client Secret.", "warn"],
+  setup_required: ["Falta conectar Discord: pegá el Client ID y el Client Secret.", "warn"],
   discord_closed: ["Discord no está abierto. Abrí la app de escritorio de Discord.", "bad"],
   connecting: ["Conectando con Discord…", "warn"],
   authorizing: ["Aceptá el pedido en Discord", "warn"],
@@ -335,5 +349,213 @@ export function knownPaths(config) {
 /** Same shape as defaultPreset() in src/config.js, built from FIELDS (src/ is not served). */
 export function newPreset(id, name) {
   const fill = (g) => Object.fromEntries(Object.entries(FIELDS[g]).map(([k, f]) => [k, f.def]));
-  return { id, name, mode: "reactive", theme: "pixel-cafe", users: [], showUnlisted: true, layout: fill("layout"), style: fill("style") };
+  return { id, name, mode: "reactive", theme: "pixel-cafe", canvas: CANVASES[0].value, users: [], showUnlisted: true, layout: fill("layout"), style: fill("style") };
+}
+
+// ---------------------------------------------------------------- templates (S12)
+
+export const LIMIT_PRESETS = 20;
+const LIMIT_USERS = 50;
+const LIMIT_PRESET_USERS = 25;
+const USER_ID = /^\d{17,20}$/;
+
+/**
+ * Ready-made presets. Pixel sizes are designed for `canvas` and scaled when the preset is created
+ * for another canvas (2K = x4/3). fixedCanvas templates keep their own canvas. maxUsers caps slots.
+ */
+export const TEMPLATES = [
+  {
+    key: "fila-abajo", name: "Fila abajo", canvas: "1920x1080",
+    description: "Quienes estén en la llamada, en fila abajo al centro.",
+    preset: { mode: "reactive", layout: { direction: "row", alignX: "center", alignY: "bottom", size: 150, gap: 28, padding: 40 }, style: {} },
+  },
+  {
+    key: "columna", name: "Columna al costado", canvas: "1920x1080",
+    description: "Una columna a la izquierda, centrada en altura.",
+    preset: { mode: "reactive", layout: { direction: "column", alignX: "left", alignY: "center", size: 120, gap: 20, padding: 32 }, style: { nameSize: 20 } },
+  },
+  {
+    key: "squad", name: "Squad en grilla", canvas: "1920x1080",
+    description: "Un lugar fijo por persona en grilla de 4; si alguien no está, dice OFFLINE.",
+    preset: { mode: "slots", layout: { direction: "grid", columns: 4, alignX: "center", alignY: "bottom", size: 150, gap: 28, padding: 40 }, style: {} },
+  },
+  {
+    key: "pngtuber", name: "PNGtuber solo", canvas: "1920x1080", maxUsers: 1,
+    description: "Solo vos, en grande abajo a la izquierda, sin nombre y con rebote al hablar.",
+    preset: {
+      mode: "slots",
+      layout: { direction: "row", alignX: "left", alignY: "bottom", size: 420, gap: 0, padding: 24 },
+      style: { showNames: false, showRoles: false, frame: false, talkGlow: false, talkAnimation: "bounce", idleDim: 0.85, offlineText: "" },
+    },
+  },
+  {
+    key: "solo-habla", name: "Solo quien habla", canvas: "1920x1080",
+    description: "Aparece solo quien está hablando, grande abajo al centro.",
+    preset: { mode: "reactive", layout: { direction: "row", alignX: "center", alignY: "bottom", size: 220, gap: 24, padding: 48 }, style: { hideWhenSilent: true, nameSize: 26 } },
+  },
+  {
+    key: "burbujas", name: "Burbujas", canvas: "1920x1080",
+    description: "Círculos chicos arriba a la derecha, estilo limpio, laten al hablar.",
+    preset: {
+      mode: "reactive", theme: "clean",
+      layout: { direction: "row", alignX: "right", alignY: "top", size: 110, gap: 16, padding: 32 },
+      style: { shape: "circle", talkAnimation: "pulse", nameSize: 18, showRoles: false },
+    },
+  },
+  {
+    key: "vertical", name: "Vertical", canvas: "1080x1920", fixedCanvas: true,
+    description: "Para streams verticales (TikTok, Shorts): fila abajo al centro.",
+    preset: { mode: "reactive", layout: { direction: "row", alignX: "center", alignY: "bottom", size: 150, gap: 20, padding: 96 }, style: { nameSize: 22 } },
+  },
+  {
+    key: "blank", name: "En blanco", canvas: "1920x1080",
+    description: "Valores base para armarlo a tu gusto.",
+    preset: {},
+  },
+];
+
+const SCALED = { layout: ["size", "gap", "padding", "offsetX", "offsetY"], style: ["nameSize"] };
+
+function scaleFactor(from, to) {
+  const a = canvasSize(from);
+  const b = canvasSize(to);
+  return Math.min(b.width / a.width, b.height / a.height);
+}
+
+/**
+ * Append a preset built from a template. Never mutates config.
+ * Returns { config, index, needsUsers } or { error: "limit" | "unknown" }.
+ */
+export function presetFromTemplate(config, key, { canvas } = {}) {
+  const tpl = TEMPLATES.find((x) => x.key === key);
+  if (!tpl) return { error: "unknown" };
+  if ((config?.presets?.length ?? 0) >= LIMIT_PRESETS) return { error: "limit" };
+  const c = structuredClone(config);
+  const target = tpl.fixedCanvas || !CANVASES.some((x) => x.value === canvas) ? tpl.canvas : canvas;
+  const p = newPreset(uniquePresetId(tpl.name, c.presets.map((x) => x.id)), tpl.name);
+  const src = tpl.preset;
+  if (src.mode) p.mode = src.mode;
+  if (src.theme) p.theme = src.theme;
+  p.canvas = target;
+  Object.assign(p.layout, src.layout);
+  Object.assign(p.style, src.style);
+  const f = scaleFactor(tpl.canvas, target);
+  if (f !== 1) {
+    for (const [group, keys] of Object.entries(SCALED)) {
+      for (const k of keys) {
+        const spec = FIELDS[group][k];
+        p[group][k] = Math.max(spec.min, Math.min(spec.max, Math.round(p[group][k] * f)));
+      }
+    }
+  }
+  if (p.mode === "slots") {
+    p.users = c.users.map((u) => u.id).filter((id) => USER_ID.test(id ?? "")).slice(0, tpl.maxUsers ?? LIMIT_PRESET_USERS);
+  }
+  c.presets.push(p);
+  return { config: c, index: c.presets.length - 1, needsUsers: p.mode === "slots" && p.users.length === 0 };
+}
+
+// ---------------------------------------------------------------- aliases (S13)
+
+/** Live call members with their Discord name and the alias configured for them (if any). */
+export function callMembers(voice, config) {
+  const users = new Map((config?.users ?? []).map((u) => [u.id, u]));
+  return (voice?.members ?? []).map((m) => ({
+    id: m.id,
+    discordName: String(m.name ?? ""),
+    avatarUrl: m.avatarUrl || "",
+    alias: users.get(m.id)?.displayName ?? "",
+    configured: users.has(m.id),
+    speaking: Boolean(m.speaking),
+  }));
+}
+
+/**
+ * Set the on-screen alias of a call member. Creates the user (no images) when it is new and the
+ * alias is not empty; an empty alias falls back to the Discord name. Never mutates config.
+ */
+export function setAlias(config, member, alias) {
+  const c = structuredClone(config);
+  const value = String(alias ?? "").slice(0, 40);
+  const u = c.users.find((x) => x.id === member?.id);
+  if (u) u.displayName = value;
+  else if (value.trim() && USER_ID.test(member?.id ?? "") && c.users.length < LIMIT_USERS) c.users.push(newUser(member.id, value));
+  return c;
+}
+
+// ---------------------------------------------------------------- guidance (S10)
+
+const PORTAL = "discord.com/developers/applications";
+const RETRY = "Volvé a esta pestaña y tocá «Guardar y conectar».";
+
+/** Plain-language explanation of a Discord connection problem, or null when there is none. */
+export function discordHelp(status) {
+  if (!status) return null;
+  const msg = String(status.message ?? "");
+  if (/missing "?redirect_uri/i.test(msg)) {
+    return {
+      title: "Discord dice «Missing redirect_uri»: falta guardar el redirect",
+      steps: [
+        `Abrí tu aplicación en ${PORTAL}.`,
+        "Entrá a OAuth2 y, en Redirects, tocá «Add Redirect».",
+        "Escribí http://127.0.0.1",
+        "Tocá «Save Changes» (la barra verde de abajo). Si no lo guardás, el error sigue.",
+        RETRY,
+      ],
+    };
+  }
+  if (/timed out/i.test(msg)) {
+    return {
+      title: "Discord no respondió a tiempo",
+      steps: [
+        "Cerrá Discord del todo (también desde el ícono al lado del reloj) y abrilo de nuevo.",
+        "Si aparece una ventana pidiendo autorización, aceptala.",
+        RETRY,
+      ],
+    };
+  }
+  if (/invalid_client|client secret/i.test(msg)) {
+    return {
+      title: "El Client ID o el Client Secret no coinciden",
+      steps: [`En ${PORTAL}, OAuth2: copiá de nuevo el Client ID y tocá «Reset Secret» para tener un secret nuevo.`, "Pegá los dos acá.", RETRY],
+    };
+  }
+  if (status.state === "discord_closed") {
+    return {
+      title: "Discord no está abierto",
+      steps: ["Abrí Discord de escritorio (no la versión del navegador) e iniciá sesión.", "Kosmik Voice se conecta solo cuando Discord está abierto."],
+    };
+  }
+  if (status.state === "auth_failed") {
+    return {
+      title: "Discord no aceptó la autorización",
+      steps: [
+        "Si en Discord tocaste «Cancelar», reintentá y esta vez tocá «Autorizar».",
+        "Revisá que el Client ID y el Client Secret sean de la misma aplicación.",
+        RETRY,
+      ],
+    };
+  }
+  if (status.state === "error") {
+    return { title: "Hubo un problema al hablar con Discord", steps: ["Cerrá y volvé a abrir Discord.", RETRY, "Si sigue, mirá el detalle técnico de abajo."] };
+  }
+  return null;
+}
+
+/** Checklist shown on top of the editor. flags: { templatePicked, obsCopied } (kept by the browser). */
+export function firstSteps({ status, config, flags = {} }) {
+  const presets = config?.presets ?? [];
+  const customised = presets.length > 1 || presets.some((p) => isDirty(newPreset(p.id, p.name), { ...p, canvas: p.canvas ?? CANVASES[0].value }));
+  return [
+    { key: "discord", label: "Conectar Discord", hint: "Pegá los datos de tu aplicación de Discord.", tab: "discord", done: status?.state === "ready" },
+    { key: "preset", label: "Elegir una plantilla", hint: "Elegí cómo se ve el overlay.", tab: "presets", done: Boolean(flags.templatePicked) || customised },
+    { key: "obs", label: "Agregar a OBS", hint: "Copiá la dirección y pegala en OBS con el tamaño indicado.", tab: "presets", done: Boolean(flags.obsCopied) },
+  ];
+}
+
+/** What to paste and type in OBS for a preset. */
+export function obsSetup(preset, origin) {
+  const { width, height } = canvasSize(preset?.canvas);
+  const url = `${origin}/overlay/${encodeURIComponent(preset?.id ?? "")}`;
+  return { url, width, height, text: `En OBS: Fuentes › + › Navegador. Pegá la dirección y poné Ancho ${width} y Alto ${height}.` };
 }

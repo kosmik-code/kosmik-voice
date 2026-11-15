@@ -106,3 +106,24 @@ test("store keeps a broken file aside and starts from defaults", async () => {
   const broken = await readFile(path.join(dir, files[0]), "utf8");
   assert.equal(broken, "{ not json");
 });
+
+test("preset canvas: optional, defaults to 1920x1080, accepts the four canvases and rejects others", () => {
+  const old = baseConfig();
+  delete old.presets[0].canvas;
+  const r = validateConfig(old);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.value.presets[0].canvas, "1920x1080");
+  assert.equal(defaultConfig().presets[0].canvas, "1920x1080");
+  for (const canvas of ["1920x1080", "2560x1440", "1280x720", "1080x1920"]) {
+    const c = baseConfig();
+    c.presets[0].canvas = canvas;
+    const v = validateConfig(c);
+    assert.equal(v.ok, true, canvas);
+    assert.equal(v.value.presets[0].canvas, canvas);
+  }
+  const bad = baseConfig();
+  bad.presets[0].canvas = "3840x2160";
+  const e = validateConfig(bad);
+  assert.equal(e.ok, false);
+  assert.deepEqual(e.errors.map((x) => x.path), ["presets[0].canvas"]);
+});

@@ -7,6 +7,8 @@ import path from "node:path";
 export const LIMITS = { users: 50, presets: 20, presetUsers: 25 };
 export const IMAGE_STATES = ["idle", "talking", "muted", "deafened"];
 export const IMAGE_NAME = /^[a-z0-9][a-z0-9._-]{0,79}\.(png|gif|webp|jpe?g)$/i;
+// OBS canvas the preset is designed for (editor preview + OBS size guidance; the overlay ignores it).
+export const CANVASES = ["1920x1080", "2560x1440", "1280x720", "1080x1920"];
 
 const USER_ID = /^\d{17,20}$/;
 const PRESET_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -47,6 +49,7 @@ export function defaultPreset(id = "main", name = "Principal") {
     name,
     mode: "reactive",
     theme: "pixel-cafe",
+    canvas: CANVASES[0],
     users: [],
     showUnlisted: true,
     layout: fill(LAYOUT, {}),
@@ -156,6 +159,7 @@ function checkPreset(errors, p, input, userIds) {
     name: checkText(errors, `${p}.name`, input.name, 40, { required: true }),
     mode: input.mode ?? def.mode,
     theme: input.theme ?? def.theme,
+    canvas: input.canvas ?? def.canvas,
     users: [],
     showUnlisted: input.showUnlisted ?? def.showUnlisted,
     layout: checkGroup(errors, `${p}.layout`, input.layout, LAYOUT),
@@ -163,6 +167,7 @@ function checkPreset(errors, p, input, userIds) {
   };
   checkField(errors, `${p}.mode`, preset.mode, ["enum", null, ["reactive", "slots"]]);
   checkField(errors, `${p}.theme`, preset.theme, ["enum", null, ["pixel-cafe", "clean"]]);
+  checkField(errors, `${p}.canvas`, preset.canvas, ["enum", null, CANVASES]);
   checkField(errors, `${p}.showUnlisted`, preset.showUnlisted, ["bool"]);
   const users = input.users ?? [];
   if (!Array.isArray(users) || users.length > LIMITS.presetUsers) {
