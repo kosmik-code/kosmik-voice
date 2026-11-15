@@ -118,7 +118,7 @@ export class IpcClient extends EventEmitter {
       return;
     }
     if (op === OP.CLOSE) {
-      this._shutdown(data?.message || "closed by Discord");
+      this._shutdown(`Discord closed the connection (${data?.code ?? "no code"}): ${data?.message || "no message"}`);
       return;
     }
     if (op !== OP.FRAME) return;

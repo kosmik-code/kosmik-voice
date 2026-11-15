@@ -84,13 +84,13 @@ export class DiscordService extends EventEmitter {
     if (!this.running) return ipc.close();
     this.ipc = ipc;
     ipc.on("event", (evt, data) => this._onEvent(evt, data));
-    ipc.on("close", () => {
+    ipc.on("close", (reason) => {
       if (this.ipc !== ipc) return;
       this.ipc = null;
       this.subscribed = null;
       this.room.setChannel(null);
       this._publish();
-      this._setStatus("discord_closed", "Lost connection to Discord");
+      this._setStatus("discord_closed", `Lost connection to Discord: ${reason}`);
       this._retry();
     });
     try {

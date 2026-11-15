@@ -91,3 +91,24 @@ test("an authorization failure stops instead of re-prompting Discord every retry
     await fake.stop();
   }
 });
+
+test("when Discord closes the pipe, its close code and message reach the status", async () => {
+  let api;
+  const fake = await startFakeDiscord({
+    connection: (a) => (api = a),
+    AUTHORIZE: () => api.send(2, { code: 4006, message: "Not authenticated or invalid scope" }),
+  });
+  const dir = await mkdtemp(path.join(tmpdir(), "kv-svc-"));
+  await writeFile(path.join(dir, "secrets.json"), JSON.stringify({ clientSecret: "s" }));
+  const svc = new DiscordService({ clientId: CLIENT, secrets: new SecretStore(dir), pipePaths: [fake.pipe], retryMs: 5000 });
+  const statuses = [];
+  svc.on("status", (s) => statuses.push(`${s.state}|${s.message}`));
+  try {
+    svc.start();
+    await waitFor(() => statuses.some((s) => s.startsWith("discord_closed|") || s.startsWith("error|")));
+    assert.ok(statuses.some((s) => s.includes("4006") && s.includes("Not authenticated or invalid scope")), statuses.join("\n"));
+  } finally {
+    svc.stop();
+    await fake.stop();
+  }
+});
