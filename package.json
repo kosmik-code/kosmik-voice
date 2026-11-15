@@ -1,0 +1,15 @@
+{
+  "name": "kosmik-voice",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Discord voice overlay for OBS: reactive images and fixed slots, driven by Discord local RPC.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  }
+}
