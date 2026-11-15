@@ -1,0 +1,139 @@
+/*
+ * Kosmik Voice overlay. Transparent page for an OBS browser source.
+ * Themes: .theme-pixel-cafe (tokens copied from D:\Streaming\obs\assets\kosmik.css) and .theme-clean.
+ * Preset values arrive as CSS variables on #stage (see overlay.js applyPreset).
+ */
+:root {
+  --k-night-2: #24223f;
+  --k-ink: #100f1c;
+  --k-cream: #f3e9d2;
+  --k-muted: #c9bfae;
+  --k-lamp: #ffcf8b;
+  --k-live: #ff5a6e;
+  --k-font: "Segoe UI", "Segoe UI Variable", Arial, sans-serif;
+  --k-font-mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+}
+
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+
+#stage {
+  --size: 160px; --gap: 24px; --pad: 24px; --cols: 4;
+  --talk: #6fc2b0; --idle-dim: 0.65; --mute-dim: 0.45; --name-size: 22px;
+  --frame-w: 6px; --radius: 0px;
+  position: absolute; inset: 0; box-sizing: border-box; padding: var(--pad);
+  display: flex;
+}
+#tiles { display: flex; gap: var(--gap); }
+#stage.dir-column #tiles { flex-direction: column; }
+#stage.dir-grid #tiles { display: grid; grid-template-columns: repeat(var(--cols), var(--size)); }
+#stage.ax-left { justify-content: flex-start; }
+#stage.ax-center { justify-content: center; }
+#stage.ax-right { justify-content: flex-end; }
+#stage.ay-top { align-items: flex-start; }
+#stage.ay-center { align-items: center; }
+#stage.ay-bottom { align-items: flex-end; }
+#stage.dir-row.ax-right #tiles { flex-direction: row-reverse; }
+
+/* ---------- tile ---------- */
+.tile {
+  position: relative; width: var(--size);
+  display: flex; flex-direction: column; align-items: center;
+  transition: opacity 160ms;
+}
+.tile.is-hidden { opacity: 0; }
+.box { position: relative; width: var(--size); height: var(--size); border-radius: var(--radius); }
+.box img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border-radius: var(--radius); object-fit: cover; transform-origin: 50% 100%;
+}
+.box img.is-asset { object-fit: contain; }
+.tile[data-state="idle"] img { filter: brightness(var(--idle-dim)); }
+.tile[data-state="muted"] img,
+.tile[data-state="deafened"] img { filter: brightness(var(--mute-dim)) grayscale(0.4); }
+.tile[data-state="offline"] img { opacity: 0.3; filter: grayscale(1); }
+
+.ph {
+  position: absolute; inset: 0; display: none; place-items: center;
+  border-radius: var(--radius);
+  font: 700 calc(var(--size) * 0.12)/1 var(--k-font-mono); letter-spacing: 0.08em;
+  color: var(--k-cream);
+}
+.tile[data-state="offline"] .ph { display: grid; }
+
+.mute {
+  position: absolute; top: calc(var(--size) * -0.06); right: calc(var(--size) * -0.06);
+  width: calc(var(--size) * 0.24); height: calc(var(--size) * 0.24);
+  display: none; place-items: center; background: var(--k-live); color: var(--k-cream);
+}
+.mute svg { width: 66%; height: 66%; }
+.tile[data-state="muted"] .mute,
+.tile[data-state="deafened"] .mute { display: grid; }
+#stage.no-mute-icon .mute { display: none !important; }
+
+.role {
+  position: absolute; top: calc(var(--size) * -0.07); left: calc(var(--size) * -0.05);
+  max-width: calc(var(--size) * 0.9); padding: 3px 8px; box-sizing: border-box;
+  font: 700 calc(var(--name-size) * 0.7)/1.2 var(--k-font-mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--role-bg, var(--k-lamp)); color: var(--k-ink);
+}
+.role:empty, #stage.no-roles .role { display: none; }
+
+.name {
+  margin-top: calc(var(--frame-w) + 10px); max-width: calc(var(--size) + 40px); padding: 4px 12px;
+  box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: var(--name-size); line-height: 1.25; text-align: center;
+}
+#stage.no-names .name { display: none; }
+
+/* ---------- talking animations (transform only, cheap in OBS) ---------- */
+.tile[data-state="talking"].anim-bounce img { animation: kv-bounce 0.5s infinite; }
+.tile[data-state="talking"].anim-shake img { animation: kv-shake 0.35s infinite; }
+.tile[data-state="talking"].anim-pulse img { animation: kv-pulse 0.7s infinite; }
+@keyframes kv-bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-7%); } }
+@keyframes kv-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+@keyframes kv-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+/* ---------- theme: Pixel café ---------- */
+.theme-pixel-cafe { --frame-color: var(--k-cream); }
+.theme-pixel-cafe .tile[data-state="talking"] { --frame-color: var(--talk); }
+.theme-pixel-cafe.has-frame .box {
+  background: var(--k-night-2);
+  box-shadow:
+    0 calc(-1 * var(--frame-w)) 0 0 var(--frame-color),
+    0 var(--frame-w) 0 0 var(--frame-color),
+    calc(-1 * var(--frame-w)) 0 0 0 var(--frame-color),
+    var(--frame-w) 0 0 0 var(--frame-color),
+    12px 12px 0 var(--frame-w) rgba(0, 0, 0, 0.5);
+}
+.theme-pixel-cafe.has-frame.no-glow .tile[data-state="talking"] { --frame-color: var(--k-cream); }
+.theme-pixel-cafe .tile[data-state="offline"] .box { background: rgba(36, 34, 63, 0.75); }
+.theme-pixel-cafe .tile[data-state="talking"].anim-bounce img { animation-timing-function: steps(3); }
+.theme-pixel-cafe .name {
+  font-family: var(--k-font-mono); font-weight: 700; color: var(--k-cream); background: var(--k-night-2);
+  box-shadow: 0 -4px 0 0 var(--k-cream), 0 4px 0 0 var(--k-cream), -4px 0 0 0 var(--k-cream), 4px 0 0 0 var(--k-cream),
+    8px 8px 0 4px rgba(0, 0, 0, 0.5);
+}
+.theme-pixel-cafe .tile[data-state="talking"] .name { color: var(--talk); }
+.theme-pixel-cafe .tile[data-state="offline"] .name { color: var(--k-muted); }
+.theme-pixel-cafe .role { box-shadow: 4px 4px 0 0 var(--k-ink); }
+.theme-pixel-cafe .mute { box-shadow: 0 0 0 3px var(--k-cream), 5px 5px 0 3px rgba(0, 0, 0, 0.5); }
+
+/* ---------- theme: Clean ---------- */
+.theme-clean { --frame-color: rgba(255, 255, 255, 0.9); }
+.theme-clean.has-frame .box { box-shadow: 0 0 0 var(--frame-w) var(--frame-color), 0 8px 24px rgba(0, 0, 0, 0.35); }
+.theme-clean .tile[data-state="talking"] .box { box-shadow: 0 0 0 var(--frame-w) var(--talk), 0 0 28px 6px var(--talk); }
+.theme-clean.no-glow .tile[data-state="talking"] .box { box-shadow: 0 0 0 var(--frame-w) var(--talk); }
+.theme-clean:not(.has-frame) .tile[data-state="talking"] .box { box-shadow: 0 0 28px 6px var(--talk); }
+.theme-clean.no-glow:not(.has-frame) .tile[data-state="talking"] .box { box-shadow: none; }
+.theme-clean .tile[data-state="offline"] .box { background: rgba(255, 255, 255, 0.18); }
+.theme-clean .name { font-family: var(--k-font); font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.55); border-radius: 999px; }
+.theme-clean .role { border-radius: 6px; }
+.theme-clean .mute { border-radius: 50%; box-shadow: 0 0 0 3px #fff; }
+
+#debug {
+  position: fixed; left: 8px; bottom: 8px; padding: 6px 10px;
+  font: 14px/1.3 var(--k-font-mono); color: var(--k-cream); background: rgba(16, 15, 28, 0.85);
+}
+
+@media (prefers-reduced-motion: reduce) { .tile img { animation: none !important; } }
