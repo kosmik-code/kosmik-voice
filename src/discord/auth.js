@@ -91,7 +91,9 @@ export async function authenticate({ ipc, clientId, store, fetch = globalThis.fe
   };
 
   const interactive = async () => {
-    const { code } = await ipc.request("AUTHORIZE", { client_id: clientId, scopes: SCOPES });
+    // Discord rejects AUTHORIZE without redirect_uri ("Missing redirect_uri") and requires the
+    // same value, registered under OAuth2 > Redirects, in the token exchange.
+    const { code } = await ipc.request("AUTHORIZE", { client_id: clientId, scopes: SCOPES, redirect_uri: redirect });
     const body = await tokenRequest(fetch, { ...base, grant_type: "authorization_code", code, redirect_uri: redirect });
     return saveToken(toToken(body, now));
   };

@@ -47,7 +47,7 @@ test("first run: AUTHORIZE -> token exchange -> AUTHENTICATE, token saved", asyn
     const res = await authenticate({ ipc: ctx.ipc, clientId: CLIENT, store: ctx.store, fetch, now: () => 1000 });
     assert.equal(res.user.id, "1");
     const authz = ctx.fake.commands().find((c) => c.cmd === "AUTHORIZE");
-    assert.deepEqual(authz.args, { client_id: CLIENT, scopes: ["rpc", "rpc.voice.read", "identify"] });
+    assert.deepEqual(authz.args, { client_id: CLIENT, scopes: ["rpc", "rpc.voice.read", "identify"], redirect_uri: "http://127.0.0.1" });
     assert.equal(fetch.calls[0].url, "https://discord.com/api/oauth2/token");
     assert.deepEqual(fetch.calls[0].body, {
       client_id: CLIENT,
