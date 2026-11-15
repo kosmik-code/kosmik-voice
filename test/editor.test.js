@@ -229,6 +229,7 @@ test("assetUsers lists who uses an image in the draft", () => {
 });
 
 test("statusText gives a Spanish message per Discord state", () => {
+  assert.equal(statusText({ state: "auth_failed", message: "x" }).text, "La autorización falló. Revisá el error, corregilo y tocá Guardar para reintentar.");
   assert.equal(statusText({ state: "authorizing", message: "x" }).text, "Aceptá el pedido en Discord");
   for (const state of ["setup_required", "discord_closed", "connecting", "ready", "error"]) {
     const s = statusText({ state, message: "detalle" });

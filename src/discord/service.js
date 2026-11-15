@@ -1,8 +1,9 @@
 // Keeps a live connection to the local Discord client and publishes voice snapshots.
 // Events: "status" ({ state, message }), "state" (snapshot).
-// States: setup_required | discord_closed | connecting | authorizing | ready | error
+// States: setup_required | discord_closed | connecting | authorizing | auth_failed | ready | error
+// auth_failed does not retry on its own: retrying would open a new Discord consent popup every time.
 import { EventEmitter } from "node:events";
-import { IpcClient, defaultPipePaths } from "./ipc.js";
+import { IpcClient, RpcError, defaultPipePaths } from "./ipc.js";
 import { authenticate } from "./auth.js";
 import { VoiceRoom } from "./voice.js";
 
@@ -101,9 +102,11 @@ export class DiscordService extends EventEmitter {
       this._setStatus("ready");
     } catch (err) {
       if (this.ipc !== ipc) return;
-      if (err.code === "SETUP_REQUIRED") {
-        this._setStatus("setup_required", err.message);
+      const authFailed = this.status.state === "authorizing" && (err instanceof RpcError || err.code === "TOKEN_FAILED");
+      if (err.code === "SETUP_REQUIRED" || authFailed) {
+        this._setStatus(authFailed ? "auth_failed" : "setup_required", err.message);
         this.running = false;
+        this.ipc = null; // detach first so the close handler neither overwrites the status nor retries
         ipc.close();
         return;
       }

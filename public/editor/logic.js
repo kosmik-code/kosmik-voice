@@ -281,6 +281,7 @@ const STATUS = {
   connecting: ["Conectando con Discord…", "warn"],
   authorizing: ["Aceptá el pedido en Discord", "warn"],
   ready: ["Conectado a Discord", "ok"],
+  auth_failed: ["La autorización falló. Revisá el error, corregilo y tocá Guardar para reintentar.", "bad"],
   error: ["Error al hablar con Discord", "bad"],
 };
 

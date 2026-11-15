@@ -375,7 +375,7 @@ function discordStatus() {
   return h("div", { class: "card", id: "discord-status" },
       h("h2", { text: "Estado" }),
       h("p", { class: "status-line" }, h("span", { class: `pill tone-${st.tone}`, text: st.text }), info ? h("span", { class: `badge tone-${info.hasToken ? "ok" : "warn"}`, text: info.hasToken ? "autorizado" : "sin autorizar" }) : null),
-      st.detail && ["error", "discord_closed"].includes(S.status?.state) ? h("p", { class: "hint", text: `Detalle: ${st.detail}` }) : null,
+      st.detail && ["error", "discord_closed", "auth_failed"].includes(S.status?.state) ? h("p", { class: "hint", text: `Detalle: ${st.detail}` }) : null,
       voice?.channel
         ? h("div", {},
             h("p", {}, "Canal de voz: ", h("strong", { text: voice.channel.name || voice.channel.id }), ` · ${voice.members.length} ${voice.members.length === 1 ? "persona" : "personas"}`),

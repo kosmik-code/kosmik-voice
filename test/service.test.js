@@ -68,3 +68,26 @@ test("reports setup_required without a client id and retries when Discord is clo
   await waitFor(() => statuses.filter((s) => s === "discord_closed").length >= 2);
   svc.stop();
 });
+
+test("an authorization failure stops instead of re-prompting Discord every retry", async () => {
+  const fake = await startFakeDiscord({
+    AUTHORIZE: (m, { fail }) => fail(5000, 'OAuth2 Error: invalid_request: Missing "redirect_uri" in request.'),
+  });
+  const dir = await mkdtemp(path.join(tmpdir(), "kv-svc-"));
+  await writeFile(path.join(dir, "secrets.json"), JSON.stringify({ clientSecret: "s" }));
+  const svc = new DiscordService({ clientId: CLIENT, secrets: new SecretStore(dir), pipePaths: [fake.pipe], retryMs: 20 });
+  try {
+    svc.start();
+    await waitFor(() => svc.status.state === "auth_failed");
+    assert.ok(svc.status.message.includes('Missing "redirect_uri" in request. Add http://127.0.0.1 under OAuth2 > Redirects'), svc.status.message);
+    await new Promise((r) => setTimeout(r, 150));
+    const handshakes = fake.received.filter((r) => r.op === 0).length;
+    assert.equal(handshakes, 1, "no automatic reconnect after an auth failure");
+    assert.equal(fake.commands().filter((c) => c.cmd === "AUTHORIZE").length, 1);
+    svc.restart();
+    await waitFor(() => fake.commands().filter((c) => c.cmd === "AUTHORIZE").length === 2);
+  } finally {
+    svc.stop();
+    await fake.stop();
+  }
+});
