@@ -157,7 +157,8 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-neon .tile[data-state="talking"] .box::after { opacity: 1; animation: kv-neon 1.1s ease-in-out infinite; }
 .theme-neon.no-glow .box::after { display: none; }
 .theme-neon .tile[data-state="muted"] .box::before, .theme-neon .tile[data-state="deafened"] .box::before { opacity: 0.25; }
-.theme-neon .tile[data-state="offline"] .box { background: rgba(7, 9, 22, 0.55); }
+/* Opaque enough to stay dark on bright scenes; "offline" reads from the dim border and grey text. */
+.theme-neon .tile[data-state="offline"] .box { background: rgba(7, 9, 22, 0.72); }
 .theme-neon .tile[data-state="offline"] .box::before { opacity: 0.2; }
 .theme-neon .ph { font-family: var(--neon-font); font-weight: 600; letter-spacing: 0.22em; color: rgba(233, 247, 255, 0.75); text-transform: uppercase; }
 .theme-neon .name {
@@ -249,7 +250,7 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-glass.shape-circle .box img { border-radius: 50%; }
 .theme-glass .ph { border-radius: var(--g-radius); }
 .theme-glass.has-frame .box {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(190, 205, 255, 0.1) 100%), rgba(18, 22, 40, 0.28);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(190, 205, 255, 0.1) 100%), rgba(18, 22, 40, 0.36);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 1px 0 1px rgba(255, 255, 255, 0.5), 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 .theme-glass .box::after {
@@ -261,17 +262,17 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-glass.no-glow:not(.has-frame) .box::after { display: none; }
 .theme-glass .tile[data-state="talking"] .box { transform: translateY(-4%); }
 .theme-glass .tile[data-state="talking"] .box::after { opacity: 1; }
-.theme-glass.has-frame .tile[data-state="offline"] .box { background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)), rgba(18, 22, 40, 0.35); }
+.theme-glass.has-frame .tile[data-state="offline"] .box { background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)), rgba(18, 22, 40, 0.55); }
 .theme-glass .ph { font-family: var(--glass-font); font-weight: 600; letter-spacing: 0.12em; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .theme-glass .name {
   margin-top: 12px; padding: 4px 16px; border-radius: 999px;
   font-family: var(--glass-font); font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), rgba(16, 20, 36, 0.5);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), rgba(16, 20, 36, 0.64);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 4px 14px rgba(0, 0, 0, 0.25);
   transition: transform 200ms ease-out;
 }
 .theme-glass .tile[data-state="talking"] .name { transform: translateY(-20%); box-shadow: inset 0 0 0 1px var(--talk), 0 0 0 1px var(--talk), 0 4px 14px rgba(0, 0, 0, 0.25); }
-.theme-glass .tile[data-state="offline"] .name { color: rgba(255, 255, 255, 0.7); }
+.theme-glass .tile[data-state="offline"] .name { color: rgba(255, 255, 255, 0.78); }
 .theme-glass .role { font-family: var(--glass-font); font-weight: 700; border-radius: 999px; padding: 3px 10px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25); }
 .theme-glass .mute { border-radius: 50%; background: rgba(255, 70, 90, 0.92); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 2px rgba(255, 255, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3); }
 

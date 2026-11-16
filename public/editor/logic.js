@@ -47,7 +47,7 @@ export const THEMES = [
   { value: "pixel-cafe", label: "Pixel café", description: "Marco pixelado crema, como los overlays de Kosmik.", swatch: ["#24223f", "#f3e9d2"] },
   { value: "clean", label: "Limpio (neutro)", description: "Borde blanco fino y nombre en pastilla oscura.", swatch: ["#ffffff", "#2b2b2b"] },
   { value: "neon", label: "Neón", description: "Fondo oscuro con borde de neón del color al hablar; letras futuristas.", swatch: ["#0c0f1f", "#22e4ff"] },
-  { value: "comic", label: "Cómic / sticker", description: "Recorte tipo sticker con borde blanco grueso, sombra dura y letra gruesa.", swatch: ["#ffffff", "#111111"] },
+  { value: "comic", label: "Cómic / sticker", description: "Recorte tipo sticker con borde blanco grueso, sombra dura y letra gruesa.", swatch: ["#ffd23f", "#ffffff"] },
   { value: "glass", label: "Glass / moderno", description: "Tarjeta translúcida tipo vidrio, esquinas suaves y nombre en pastilla.", swatch: ["#c8d4ff", "#ffffff"] },
 ];
 
