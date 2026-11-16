@@ -28,7 +28,8 @@ It runs on your PC and talks to your Discord client through **local RPC**, the s
 ## First run
 
 ```powershell
-cd D:\Streaming\StreamTools\kosmik-voice
+git clone https://github.com/kosmik-code/kosmik-voice
+cd kosmik-voice
 npm install
 npm start
 ```
@@ -98,3 +99,7 @@ npm test
 The automated tests use a fake Discord IPC server that speaks the real protocol. Authorization and voice events have also been verified manually against a real Discord client. If Discord changes a payload, the place to adjust is `src/discord/voice.js`.
 
 Optional Windows browser checks: `node scripts/check-themes.mjs` starts an isolated local server and headless Microsoft Edge, checks all five themes and saves screenshots under `data/theme-checks/`. It does not use your live Discord credentials or config. Set `KV_EDGE` for a custom Edge executable, and `KV_SCREENSHOTS` for a different screenshot directory.
+
+## License
+
+[MIT](LICENSE) © 2026 Kosmik

@@ -1,6 +1,6 @@
 /*
  * Kosmik Voice overlay. Transparent page for an OBS browser source.
- * Themes: .theme-pixel-cafe (tokens copied from D:\Streaming\obs\assets\kosmik.css), .theme-clean,
+ * Themes: .theme-pixel-cafe (tokens from the Kosmik stream overlays), .theme-clean,
  * .theme-neon, .theme-comic and .theme-glass. System fonts only; animations touch transform/opacity only.
  * Preset values arrive as CSS variables on #stage (see overlay.js applyPreset).
  */

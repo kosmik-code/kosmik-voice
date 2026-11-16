@@ -4,6 +4,7 @@
   "private": true,
   "description": "Local Discord voice overlay for OBS: reactive images and fixed slots, driven by Discord local RPC.",
   "type": "module",
+  "license": "MIT",
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node src/main.js",
