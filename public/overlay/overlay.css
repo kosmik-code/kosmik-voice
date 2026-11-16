@@ -3,6 +3,8 @@
  * Themes: .theme-pixel-cafe (tokens from the Kosmik stream overlays), .theme-clean,
  * .theme-neon, .theme-comic and .theme-glass. System fonts only; animations touch transform/opacity only.
  * Preset values arrive as CSS variables on #stage (see overlay.js applyPreset).
+ * Optional theme colours (empty in the preset = theme default) arrive as --c-frame, --c-box, --c-name,
+ * --c-name-bg, --c-name-border and --c-accent; every theme reads them as var(--c-x, <its own default>).
  */
 :root {
   --k-night-2: #24223f;
@@ -64,7 +66,7 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .mute {
   position: absolute; top: calc(var(--size) * -0.06); right: calc(var(--size) * -0.06);
   width: calc(var(--size) * 0.24); height: calc(var(--size) * 0.24);
-  display: none; place-items: center; background: var(--k-live); color: var(--k-cream);
+  display: none; place-items: center; background: var(--c-accent, var(--k-live)); color: var(--k-cream);
 }
 .mute svg { width: 66%; height: 66%; }
 .tile[data-state="muted"] .mute,
@@ -96,10 +98,10 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 @keyframes kv-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
 /* ---------- theme: Pixel café ---------- */
-.theme-pixel-cafe { --frame-color: var(--k-cream); }
+.theme-pixel-cafe { --frame-color: var(--c-frame, var(--k-cream)); }
 .theme-pixel-cafe .tile[data-state="talking"] { --frame-color: var(--talk); }
 .theme-pixel-cafe.has-frame .box {
-  background: var(--k-night-2);
+  background: var(--c-box, var(--k-night-2));
   box-shadow:
     0 calc(-1 * var(--frame-w)) 0 0 var(--frame-color),
     0 var(--frame-w) 0 0 var(--frame-color),
@@ -107,12 +109,13 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     var(--frame-w) 0 0 0 var(--frame-color),
     12px 12px 0 var(--frame-w) rgba(0, 0, 0, 0.5);
 }
-.theme-pixel-cafe.has-frame.no-glow .tile[data-state="talking"] { --frame-color: var(--k-cream); }
-.theme-pixel-cafe .tile[data-state="offline"] .box { background: rgba(36, 34, 63, 0.75); }
+.theme-pixel-cafe.has-frame.no-glow .tile[data-state="talking"] { --frame-color: var(--c-frame, var(--k-cream)); }
+.theme-pixel-cafe .tile[data-state="offline"] .box { background: var(--c-box, rgba(36, 34, 63, 0.75)); }
 .theme-pixel-cafe .tile[data-state="talking"].anim-bounce img { animation-timing-function: steps(3); }
 .theme-pixel-cafe .name {
-  font-family: var(--k-font-mono); font-weight: 700; color: var(--k-cream); background: var(--k-night-2);
-  box-shadow: 0 -4px 0 0 var(--k-cream), 0 4px 0 0 var(--k-cream), -4px 0 0 0 var(--k-cream), 4px 0 0 0 var(--k-cream),
+  --nb: var(--c-name-border, var(--k-cream));
+  font-family: var(--k-font-mono); font-weight: 700; color: var(--c-name, var(--k-cream)); background: var(--c-name-bg, var(--k-night-2));
+  box-shadow: 0 -4px 0 0 var(--nb), 0 4px 0 0 var(--nb), -4px 0 0 0 var(--nb), 4px 0 0 0 var(--nb),
     8px 8px 0 4px rgba(0, 0, 0, 0.5);
 }
 .theme-pixel-cafe .tile[data-state="talking"] .name { color: var(--talk); }
@@ -121,14 +124,18 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-pixel-cafe .mute { box-shadow: 0 0 0 3px var(--k-cream), 5px 5px 0 3px rgba(0, 0, 0, 0.5); }
 
 /* ---------- theme: Clean ---------- */
-.theme-clean { --frame-color: rgba(255, 255, 255, 0.9); }
+.theme-clean { --frame-color: var(--c-frame, rgba(255, 255, 255, 0.9)); }
+.theme-clean .box { background: var(--c-box, transparent); }
 .theme-clean.has-frame .box { box-shadow: 0 0 0 var(--frame-w) var(--frame-color), 0 8px 24px rgba(0, 0, 0, 0.35); }
 .theme-clean .tile[data-state="talking"] .box { box-shadow: 0 0 0 var(--frame-w) var(--talk), 0 0 28px 6px var(--talk); }
 .theme-clean.no-glow .tile[data-state="talking"] .box { box-shadow: 0 0 0 var(--frame-w) var(--talk); }
 .theme-clean:not(.has-frame) .tile[data-state="talking"] .box { box-shadow: 0 0 28px 6px var(--talk); }
 .theme-clean.no-glow:not(.has-frame) .tile[data-state="talking"] .box { box-shadow: none; }
-.theme-clean .tile[data-state="offline"] .box { background: rgba(255, 255, 255, 0.18); }
-.theme-clean .name { font-family: var(--k-font); font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.55); border-radius: 999px; }
+.theme-clean .tile[data-state="offline"] .box { background: var(--c-box, rgba(255, 255, 255, 0.18)); }
+.theme-clean .name {
+  font-family: var(--k-font); font-weight: 600; color: var(--c-name, #fff); background: var(--c-name-bg, rgba(0, 0, 0, 0.55)); border-radius: 999px;
+  box-shadow: inset 0 0 0 2px var(--c-name-border, transparent);
+}
 .theme-clean .role { border-radius: 6px; }
 .theme-clean .mute { border-radius: 50%; box-shadow: 0 0 0 3px #fff; }
 
@@ -140,38 +147,42 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
  * is the only thing that animates. The blurred shadow itself is static, so OBS composites it once. */
 .theme-neon {
   --neon-font: "Bahnschrift", "Segoe UI", Arial, sans-serif;
-  --neon-bg: rgba(7, 9, 22, 0.78); --neon-text: #e9f7ff; --neon-alt: #ff3df0;
+  --neon-bg: var(--c-box, rgba(7, 9, 22, 0.78)); --neon-name-bg: var(--c-name-bg, rgba(7, 9, 22, 0.78));
+  --neon-text: var(--c-name, #e9f7ff); --neon-alt: var(--c-accent, #ff3df0); --neon-line: var(--c-name-border, rgba(233, 247, 255, 0.35));
   --neon-w: max(2px, calc(var(--frame-w) * 0.45));
 }
 .theme-neon .box::before, .theme-neon .box::after {
   content: ""; position: absolute; inset: 0; border-radius: var(--radius); pointer-events: none;
 }
-.theme-neon .box::before { z-index: 2; box-shadow: inset 0 0 0 var(--neon-w) var(--talk); opacity: 0.45; transition: opacity 160ms; }
+.theme-neon .box::before { z-index: 2; box-shadow: inset 0 0 0 var(--neon-w) var(--c-frame, var(--talk)); opacity: 0.45; transition: opacity 160ms; }
 .theme-neon .box::after {
   z-index: 1; opacity: 0; transition: opacity 180ms;
   box-shadow: 0 0 calc(var(--size) * 0.1) calc(var(--size) * 0.02) var(--talk), inset 0 0 calc(var(--size) * 0.08) var(--talk);
 }
 .theme-neon.has-frame .box { background: var(--neon-bg); }
 .theme-neon:not(.has-frame) .box::before { display: none; }
-.theme-neon .tile[data-state="talking"] .box::before { opacity: 1; }
+.theme-neon .tile[data-state="talking"] .box::before { opacity: 1; box-shadow: inset 0 0 0 var(--neon-w) var(--talk); }
 .theme-neon .tile[data-state="talking"] .box::after { opacity: 1; animation: kv-neon 1.1s ease-in-out infinite; }
 .theme-neon.no-glow .box::after { display: none; }
 .theme-neon .tile[data-state="muted"] .box::before, .theme-neon .tile[data-state="deafened"] .box::before { opacity: 0.25; }
 /* Opaque enough to stay dark on bright scenes; "offline" reads from the dim border and grey text. */
-.theme-neon .tile[data-state="offline"] .box { background: rgba(7, 9, 22, 0.72); }
+.theme-neon .tile[data-state="offline"] .box { background: var(--c-box, rgba(7, 9, 22, 0.72)); }
 .theme-neon .tile[data-state="offline"] .box::before { opacity: 0.2; }
 .theme-neon .ph { font-family: var(--neon-font); font-weight: 600; letter-spacing: 0.22em; color: rgba(233, 247, 255, 0.75); text-transform: uppercase; }
 .theme-neon .name {
   margin-top: calc(var(--neon-w) + 12px); padding: 3px 14px;
   font-family: var(--neon-font); font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
-  color: var(--neon-text); background: var(--neon-bg); border-radius: 3px;
-  box-shadow: inset 0 0 0 1px rgba(233, 247, 255, 0.35), inset 3px 0 0 0 var(--neon-alt);
+  color: var(--neon-text); background: var(--neon-name-bg); border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--neon-line), inset 3px 0 0 0 var(--neon-alt);
   transition: color 160ms;
 }
 .theme-neon .tile[data-state="talking"] .name {
   color: var(--talk); text-shadow: 0 0 8px var(--talk);
   box-shadow: inset 0 0 0 1px var(--talk), inset 3px 0 0 0 var(--talk);
 }
+/* "Name stripe" off: keep only the thin outline around the name. */
+.theme-neon.no-name-stripe .name { box-shadow: inset 0 0 0 1px var(--neon-line); }
+.theme-neon.no-name-stripe .tile[data-state="talking"] .name { box-shadow: inset 0 0 0 1px var(--talk); }
 .theme-neon .tile[data-state="offline"] .name { color: rgba(233, 247, 255, 0.55); }
 .theme-neon .role {
   font-family: var(--neon-font); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
@@ -189,15 +200,15 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-comic {
   --comic-font: "Segoe UI Black", "Arial Black", "Segoe UI", Arial, sans-serif;
   --comic-ink: #121018; --cw: max(3px, calc(var(--frame-w) * 1.1)); --cs: max(4px, calc(var(--frame-w) * 1.4));
-  --oc: #fff;
+  --oc: var(--c-frame, #fff); --comic-name-line: var(--c-name-border, var(--comic-ink));
 }
 .theme-comic .tile { --tilt: -3deg; --st: brightness(1); }
 .theme-comic .tile:nth-child(even) { --tilt: 2.5deg; }
 .theme-comic .box { transform: rotate(var(--tilt)); transition: transform 140ms cubic-bezier(0.3, 1.6, 0.5, 1); }
 .theme-comic .tile[data-state="talking"] .box { transform: rotate(0deg) scale(1.07); }
 .theme-comic .tile[data-state="talking"] { --oc: var(--talk); }
-.theme-comic.no-glow .tile[data-state="talking"] { --oc: #fff; }
-.theme-comic.has-frame .tile:not(.has-asset) .box { background: #fff; box-shadow: 0 0 0 var(--cw) var(--oc), var(--cs) var(--cs) 0 var(--cw) var(--comic-ink); }
+.theme-comic.no-glow .tile[data-state="talking"] { --oc: var(--c-frame, #fff); }
+.theme-comic.has-frame .tile:not(.has-asset) .box { background: var(--c-box, #fff); box-shadow: 0 0 0 var(--cw) var(--oc), var(--cs) var(--cs) 0 var(--cw) var(--comic-ink); }
 .theme-comic:not(.has-frame) .tile:not(.has-asset) .box { box-shadow: var(--cs) var(--cs) 0 0 var(--comic-ink); }
 .theme-comic .tile[data-state="idle"] { --st: brightness(var(--idle-dim)); }
 .theme-comic .tile[data-state="muted"], .theme-comic .tile[data-state="deafened"] { --st: brightness(var(--mute-dim)) grayscale(0.4); }
@@ -208,25 +219,25 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     drop-shadow(var(--cs) var(--cs) 0 var(--comic-ink));
 }
 .theme-comic:not(.has-frame) .tile.has-asset img { filter: var(--st) drop-shadow(var(--cs) var(--cs) 0 var(--comic-ink)); }
-.theme-comic .tile[data-state="offline"]:not(.has-asset) .box { background: #ece6d6; }
+.theme-comic .tile[data-state="offline"]:not(.has-asset) .box { background: var(--c-box, #ece6d6); }
 .theme-comic .ph { font-family: var(--comic-font); font-weight: 900; color: var(--comic-ink); letter-spacing: 0.04em; }
 .theme-comic .tile.has-asset[data-state="offline"] .ph { color: #fff; text-shadow: 2px 2px 0 var(--comic-ink), -1px -1px 0 var(--comic-ink); }
 .theme-comic .name {
   position: relative; margin-top: calc(var(--cw) + var(--cs) + 12px); padding: 4px 14px;
-  font-family: var(--comic-font); font-weight: 900; color: var(--comic-ink); background: #fff; border-radius: 14px;
-  box-shadow: 0 0 0 3px var(--comic-ink), 4px 4px 0 3px var(--comic-ink);
+  font-family: var(--comic-font); font-weight: 900; color: var(--c-name, var(--comic-ink)); background: var(--c-name-bg, #fff); border-radius: 14px;
+  box-shadow: 0 0 0 3px var(--comic-name-line), 4px 4px 0 3px var(--comic-ink);
   transform: rotate(calc(var(--tilt) * -0.6)); transition: transform 140ms;
   /* Keep the sticker silhouette without letting long aliases escape its label. */
   overflow: hidden; text-overflow: ellipsis;
 }
-.theme-comic .tile[data-state="talking"] .name { box-shadow: 0 0 0 3px var(--comic-ink), 4px 4px 0 3px var(--talk); transform: rotate(0deg) scale(1.06); }
-.theme-comic.no-glow .tile[data-state="talking"] .name { box-shadow: 0 0 0 3px var(--comic-ink), 4px 4px 0 3px var(--comic-ink); }
+.theme-comic .tile[data-state="talking"] .name { box-shadow: 0 0 0 3px var(--comic-name-line), 4px 4px 0 3px var(--talk); transform: rotate(0deg) scale(1.06); }
+.theme-comic.no-glow .tile[data-state="talking"] .name { box-shadow: 0 0 0 3px var(--comic-name-line), 4px 4px 0 3px var(--comic-ink); }
 .theme-comic .tile[data-state="offline"] .name { color: #6b6578; }
 .theme-comic .role {
   font-family: var(--comic-font); font-weight: 900; color: var(--comic-ink);
   transform: rotate(-7deg); box-shadow: 0 0 0 2px var(--comic-ink), 3px 3px 0 2px var(--comic-ink);
 }
-.theme-comic .mute { border-radius: 50%; background: #ff3b4f; color: #fff; box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--comic-ink), 4px 4px 0 6px var(--comic-ink); }
+.theme-comic .mute { border-radius: 50%; background: var(--c-accent, #ff3b4f); color: #fff; box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--comic-ink), 4px 4px 0 6px var(--comic-ink); }
 /* exaggerated but cheap: squash & stretch, transform only */
 .theme-comic .tile[data-state="talking"].anim-bounce img { animation: kv-comic-bounce 0.46s infinite; }
 @keyframes kv-comic-bounce {
@@ -250,8 +261,8 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-glass.shape-circle .box img { border-radius: 50%; }
 .theme-glass .ph { border-radius: var(--g-radius); }
 .theme-glass.has-frame .box {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(190, 205, 255, 0.1) 100%), rgba(18, 22, 40, 0.36);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 1px 0 1px rgba(255, 255, 255, 0.5), 0 10px 28px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(190, 205, 255, 0.1) 100%), var(--c-box, rgba(18, 22, 40, 0.36));
+  box-shadow: inset 0 0 0 1px var(--c-frame, rgba(255, 255, 255, 0.55)), inset 0 1px 0 1px rgba(255, 255, 255, 0.5), 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 .theme-glass .box::after {
   content: ""; position: absolute; inset: 0; z-index: 2; border-radius: var(--g-radius); pointer-events: none;
@@ -262,19 +273,19 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .theme-glass.no-glow:not(.has-frame) .box::after { display: none; }
 .theme-glass .tile[data-state="talking"] .box { transform: translateY(-4%); }
 .theme-glass .tile[data-state="talking"] .box::after { opacity: 1; }
-.theme-glass.has-frame .tile[data-state="offline"] .box { background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)), rgba(18, 22, 40, 0.55); }
+.theme-glass.has-frame .tile[data-state="offline"] .box { background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)), var(--c-box, rgba(18, 22, 40, 0.55)); }
 .theme-glass .ph { font-family: var(--glass-font); font-weight: 600; letter-spacing: 0.12em; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .theme-glass .name {
   margin-top: 12px; padding: 4px 16px; border-radius: 999px;
-  font-family: var(--glass-font); font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), rgba(16, 20, 36, 0.64);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-family: var(--glass-font); font-weight: 600; color: var(--c-name, #fff); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), var(--c-name-bg, rgba(16, 20, 36, 0.64));
+  box-shadow: inset 0 0 0 1px var(--c-name-border, rgba(255, 255, 255, 0.45)), 0 4px 14px rgba(0, 0, 0, 0.25);
   transition: transform 200ms ease-out;
 }
 .theme-glass .tile[data-state="talking"] .name { transform: translateY(-20%); box-shadow: inset 0 0 0 1px var(--talk), 0 0 0 1px var(--talk), 0 4px 14px rgba(0, 0, 0, 0.25); }
 .theme-glass .tile[data-state="offline"] .name { color: rgba(255, 255, 255, 0.78); }
 .theme-glass .role { font-family: var(--glass-font); font-weight: 700; border-radius: 999px; padding: 3px 10px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25); }
-.theme-glass .mute { border-radius: 50%; background: rgba(255, 70, 90, 0.92); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 2px rgba(255, 255, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3); }
+.theme-glass .mute { border-radius: 50%; background: var(--c-accent, rgba(255, 70, 90, 0.92)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 2px rgba(255, 255, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3); }
 
 /* "None" keeps static state cues but disables the extra theme motion too. */
 .theme-neon .tile.anim-none .box::after { animation: none; }
@@ -287,11 +298,8 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
   font: 14px/1.3 var(--k-font-mono); color: var(--k-cream); background: rgba(16, 15, 28, 0.85);
 }
 
-/* Theme-specific motion must also respect the viewer's reduced-motion preference. */
-@media (prefers-reduced-motion: reduce) {
-  .tile img, .tile .box, .tile .name, .tile .box::before, .tile .box::after {
-    animation: none !important; transition: none !important;
-  }
-  .theme-comic .tile .box, .theme-comic .tile .name,
-  .theme-glass .tile .box, .theme-glass .tile .name { transform: none !important; }
-}
+/*
+ * No prefers-reduced-motion rule on purpose: OBS reports the streaming PC's Windows setting
+ * ("Animation effects" off, "Adjust for best performance"), not the stream viewers' preference, so honouring it
+ * silently switched every animation off. "Talking animation: None" is the explicit way to turn motion off.
+ */

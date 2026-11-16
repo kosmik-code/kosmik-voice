@@ -48,6 +48,13 @@ export const FIELDS = {
     hideWhenSilent: spec("style", "hideWhenSilent", { kind: "bool", def: false }),
     showMuteIcon: spec("style", "showMuteIcon", { kind: "bool", def: true }),
     offlineText: spec("style", "offlineText", { kind: "str", def: "OFFLINE", min: 0, max: 24 }),
+    frameColor: spec("style", "frameColor", { kind: "optcolor", def: "" }),
+    boxColor: spec("style", "boxColor", { kind: "optcolor", def: "" }),
+    nameColor: spec("style", "nameColor", { kind: "optcolor", def: "" }),
+    nameBg: spec("style", "nameBg", { kind: "optcolor", def: "" }),
+    nameBorder: spec("style", "nameBorder", { kind: "optcolor", def: "" }),
+    accentColor: spec("style", "accentColor", { kind: "optcolor", def: "" }),
+    nameStripe: spec("style", "nameStripe", { kind: "bool", def: true }),
   },
 };
 

@@ -10,7 +10,8 @@ It runs on your PC and talks to your Discord client through **local RPC**, the s
 ## Features
 
 - Per-user images for idle, talking, muted and deafened (PNG, GIF, WebP, JPG). A missing image falls back to the next one, ending at the live Discord avatar.
-- Talking animations: bounce, shake, pulse or none. Optional glow, dimming while silent, dimming while muted, and mute/deafen badges.
+- Talking animations: bounce, shake, pulse or none. Optional glow, dimming while silent, dimming while muted, and mute/deafen badges. Animations always play in OBS, even when Windows has *Animation effects* turned off; pick **none** to stop them. A short pause between words (300 ms) does not count as silence, so the animation and glow don't flicker mid-sentence.
+- **Theme colours** (*Ajustes avanzados › Colores del tema*): frame, image background, name text, name background, name outline and accent (mute badge, Neón stripe). Leave a colour empty to keep the theme's own; use 8-digit hex such as `#00000000` for transparent. The Neón stripe beside the name can be turned off.
 - Names, roles and role colours. Row, column or grid layouts, with alignment, offsets, gap, padding and size.
 - **Aliases**: show any name on screen instead of the Discord name. Set one per user, or type it straight next to whoever is in your call (**Usuarios › En la llamada ahora**). That also adds the person, with no images needed. An empty alias falls back to the Discord name.
 - Five themes, selectable under **Presets → Lo básico → Tema**: **Pixel café**, **Clean**, **Neón** (bright outlines and speaking glow), **Cómic / sticker** (bold sticker outlines and speech labels), and **Glass / moderno** (translucent cards and soft highlights). Glass uses translucent fills, not blur of other OBS sources. All themes keep your images, aliases, roles and voice-state indicators.

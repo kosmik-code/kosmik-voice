@@ -107,10 +107,18 @@ try {
       assert.deepEqual(extraMotion.talking, extraMotion.idle, `${theme}: no lift/pop when animation is disabled`);
       await shot(`theme-${theme}-no-frame`);
       await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
-      const motion = await evaluate(`['.tile img','.tile .box','.tile .name'].map(s=>{const c=getComputedStyle(document.querySelector(s));return {animation:c.animationName,transition:c.transitionDuration}})`);
-      assert.ok(motion.every((m) => m.animation === "none" && m.transition === "0s"), `${theme}: reduced motion: ${JSON.stringify(motion)}`);
+      // OBS reports the streaming PC's OS setting: animations chosen in the preset must still run.
+      const motion = await evaluate(`(()=>{const tile=document.querySelector('.tile[data-state="talking"]');tile.className=tile.className.replace(/anim-\\w+/,'anim-bounce');const c=getComputedStyle(tile.querySelector('img'));return {name:c.animationName,cls:tile.className,stage:document.getElementById('stage').className}})()`);
+      assert.notEqual(motion.name, "none", `${theme}: talking animation must survive prefers-reduced-motion: ${JSON.stringify(motion)}`);
       await send("Emulation.setEmulatedMedia", { features: [] });
-      console.log(`PASS ${theme}: animation none and reduced motion`);
+      console.log(`PASS ${theme}: animation none, and animations kept under reduced motion`);
+      if (theme === "neon") {
+        const stripe = await evaluate(`(()=>{const st=document.getElementById('stage');const n=document.querySelector('.tile[data-state="idle"] .name');const on=getComputedStyle(n).boxShadow;st.classList.add('no-name-stripe');st.style.setProperty('--c-name-bg','#ff0000');const c=getComputedStyle(n);const r={on,off:c.boxShadow,bg:c.backgroundColor};st.classList.remove('no-name-stripe');st.style.removeProperty('--c-name-bg');return r})()`);
+        assert.match(stripe.on, /3px 0px 0px 0px/, "neon: stripe drawn by default");
+        assert.doesNotMatch(stripe.off, /3px 0px 0px 0px/, "neon: stripe removed with nameStripe off");
+        assert.equal(stripe.bg, "rgb(255, 0, 0)", "neon: custom name background applied");
+        console.log("PASS neon: name stripe toggle and custom colours");
+      }
     }
   }
   await send("Page.navigate", { url: `${server.url}/editor/?preset=neon#presets` });
@@ -119,6 +127,10 @@ try {
   assert.deepEqual(options, ["pixel-cafe", "clean", "neon", "comic", "glass"]);
   await shot("theme-editor-final");
   console.log("PASS editor: five themes selectable");
+  const colors = await evaluate(`(()=>{document.querySelector('details.advanced').open=true;const f=document.querySelector("[data-path='presets[2].style.nameBg']");const btn=document.querySelector("[data-path='presets[2].style.nameBorder'] button");const stripe=document.querySelector("[data-path='presets[2].style.nameStripe'] input");f?.scrollIntoView({block:'center'});return {text:f?.querySelector('.hex')?.placeholder,resetDisabled:btn?.disabled,stripe:stripe?.checked}})()`);
+  assert.ok(["color del tema", "theme color"].includes(colors.text) && colors.resetDisabled && colors.stripe, JSON.stringify(colors));
+  await shot("theme-editor-colors");
+  console.log("PASS editor: theme colour fields and name stripe toggle");
   await call("Browser.close");
   browserClosed = true;
 } finally {

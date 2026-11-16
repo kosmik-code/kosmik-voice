@@ -43,6 +43,14 @@ const STYLE = {
   hideWhenSilent: ["bool", false],
   showMuteIcon: ["bool", true],
   offlineText: ["str", "OFFLINE", 0, 24],
+  // Theme colours: "" = the theme's own colour. Additive, so older configs stay valid.
+  frameColor: ["optcolor", ""],
+  boxColor: ["optcolor", ""],
+  nameColor: ["optcolor", ""],
+  nameBg: ["optcolor", ""],
+  nameBorder: ["optcolor", ""],
+  accentColor: ["optcolor", ""],
+  nameStripe: ["bool", true],
 };
 
 export function defaultPreset(id = "main", name = "Principal") {
@@ -90,6 +98,9 @@ function checkField(errors, p, value, [kind, , a, b]) {
       break;
     case "color":
       if (typeof value !== "string" || !COLOR.test(value)) fail("must be a hex color like #6fc2b0");
+      break;
+    case "optcolor":
+      if (value !== "" && (typeof value !== "string" || !COLOR.test(value))) fail("must be a hex color like #6fc2b0");
       break;
     case "str":
       if (typeof value !== "string" || value.length < a || value.length > b) fail(`must be text of ${a}-${b} characters`);
