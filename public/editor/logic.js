@@ -41,6 +41,16 @@ export const CANVASES = [
   { value: "1080x1920", label: "Vertical (1080×1920)", width: 1080, height: 1920 },
 ];
 
+// Mirror of THEMES in src/config.js (a test keeps them in sync). First = default.
+// swatch: [background, accent] for the small colour sample next to the select.
+export const THEMES = [
+  { value: "pixel-cafe", label: "Pixel café", description: "Marco pixelado crema, como los overlays de Kosmik.", swatch: ["#24223f", "#f3e9d2"] },
+  { value: "clean", label: "Limpio (neutro)", description: "Borde blanco fino y nombre en pastilla oscura.", swatch: ["#ffffff", "#2b2b2b"] },
+  { value: "neon", label: "Neón", description: "Fondo oscuro con borde de neón del color al hablar; letras futuristas.", swatch: ["#0c0f1f", "#22e4ff"] },
+  { value: "comic", label: "Cómic / sticker", description: "Recorte tipo sticker con borde blanco grueso, sombra dura y letra gruesa.", swatch: ["#ffffff", "#111111"] },
+  { value: "glass", label: "Glass / moderno", description: "Tarjeta translúcida tipo vidrio, esquinas suaves y nombre en pastilla.", swatch: ["#c8d4ff", "#ffffff"] },
+];
+
 export function canvasSize(value) {
   const c = CANVASES.find((x) => x.value === value) ?? CANVASES[0];
   return { width: c.width, height: c.height };
@@ -401,6 +411,21 @@ export const TEMPLATES = [
       layout: { direction: "row", alignX: "right", alignY: "top", size: 110, gap: 16, padding: 32 },
       style: { shape: "circle", talkAnimation: "pulse", nameSize: 18, showRoles: false },
     },
+  },
+  {
+    key: "neon", name: "Neón abajo", canvas: "1920x1080",
+    description: "Tema Neón: fila abajo al centro con borde que brilla al hablar.",
+    preset: { mode: "reactive", theme: "neon", layout: { direction: "row", alignX: "center", alignY: "bottom", size: 150, gap: 32, padding: 48 }, style: { shape: "rounded", talkAnimation: "pulse", talkColor: "#22e4ff" } },
+  },
+  {
+    key: "stickers", name: "Stickers", canvas: "1920x1080",
+    description: "Tema Cómic: stickers con borde blanco, abajo a la izquierda, saltan al hablar.",
+    preset: { mode: "reactive", theme: "comic", layout: { direction: "row", alignX: "left", alignY: "bottom", size: 160, gap: 36, padding: 48 }, style: { talkColor: "#ffd23f", nameSize: 22 } },
+  },
+  {
+    key: "vidrio", name: "Tarjetas de vidrio", canvas: "1920x1080",
+    description: "Tema Glass: tarjetas translúcidas en columna a la derecha.",
+    preset: { mode: "reactive", theme: "glass", layout: { direction: "column", alignX: "right", alignY: "center", size: 120, gap: 44, padding: 40 }, style: { shape: "rounded", talkAnimation: "pulse", nameSize: 18 } },
   },
   {
     key: "vertical", name: "Vertical", canvas: "1080x1920", fixedCanvas: true,

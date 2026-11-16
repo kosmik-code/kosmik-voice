@@ -13,12 +13,12 @@ It runs on your PC and talks to your Discord client through **local RPC**, the s
 - Talking animations: bounce, shake, pulse or none. Optional glow, dimming while silent, dimming while muted, and mute/deafen badges.
 - Names, roles and role colours. Row, column or grid layouts, with alignment, offsets, gap, padding and size.
 - **Aliases**: show any name on screen instead of the Discord name. Set one per user, or type it straight next to whoever is in your call (**Usuarios › En la llamada ahora**). That also adds the person, with no images needed. An empty alias falls back to the Discord name.
-- Themes: **Pixel café**, which matches the Kosmik overlays, and **Clean**.
-- **Templates** for new presets: *Fila abajo*, *Columna al costado*, *Squad en grilla*, *PNGtuber solo*, *Solo quien habla*, *Burbujas*, *Vertical* and *En blanco*. Pick your OBS canvas in the gallery and the sizes are scaled for it (2K = ×4/3).
+- Five themes, selectable under **Presets → Lo básico → Tema**: **Pixel café**, **Clean**, **Neón** (bright outlines and speaking glow), **Cómic / sticker** (bold sticker outlines and speech labels), and **Glass / moderno** (translucent cards and soft highlights). Glass uses translucent fills, not blur of other OBS sources. All themes keep your images, aliases, roles and voice-state indicators.
+- **Templates** for new presets: *Fila abajo*, *Columna al costado*, *Squad en grilla*, *PNGtuber solo*, *Solo quien habla*, *Burbujas*, *Vertical*, *En blanco*, *Neón abajo*, *Stickers* and *Tarjetas de vidrio*. Pick your OBS canvas in the gallery and the sizes are scaled for it (2K = ×4/3).
 - Each preset remembers its **canvas**: Full HD 1920×1080, **2K 2560×1440**, HD 1280×720 or Vertical 1080×1920. The preview uses it, and the editor tells you the exact width and height to type in OBS.
 - Up to 20 presets with one OBS URL each, up to 50 users, and up to 25 users per preset.
 - Web editor in plain Spanish, with a **Primeros pasos** checklist (connect Discord → pick a template → add to OBS), the essentials up front and the rest under *Ajustes avanzados*, plus a live preview. The preview can simulate the call: per-user states, everyone talking, rotating speaker, or all states at once.
-- `?demo=1` and `?demo=static` on any overlay URL let you position it in OBS without a call. `?debug=1` shows the connection status.
+- `?demo=1` and `?demo=static` on any overlay URL let you position it in OBS without a call. `?debug=1` shows the connection status. For contrast checks, `?demo=static&bg=busy` adds a colourful test background; `bg=404850` uses a six-digit hex colour. Omit `bg` in OBS to keep the source transparent.
 
 ## Requirements
 
@@ -95,4 +95,6 @@ npm test
 | `public/overlay/` | OBS overlay page and themes |
 | `public/editor/` | Web editor (`logic.js` is pure and tested) |
 
-The tests use a fake Discord IPC server that speaks the real protocol. They have not been checked against a live Discord client yet. If Discord changes a payload, the place to adjust is `src/discord/voice.js`.
+The automated tests use a fake Discord IPC server that speaks the real protocol. Authorization and voice events have also been verified manually against a real Discord client. If Discord changes a payload, the place to adjust is `src/discord/voice.js`.
+
+Optional Windows browser checks: `node scripts/check-themes.mjs` starts an isolated local server and headless Microsoft Edge, checks all five themes and saves screenshots under `data/theme-checks/`. It does not use your live Discord credentials or config. Set `KV_EDGE` for a custom Edge executable, and `KV_SCREENSHOTS` for a different screenshot directory.

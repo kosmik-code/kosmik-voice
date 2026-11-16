@@ -31,8 +31,9 @@ import {
   firstSteps,
   obsSetup,
   USER_LABELS,
+  THEMES,
 } from "../public/editor/logic.js";
-import { defaultConfig, defaultPreset, validateConfig } from "../src/config.js";
+import { defaultConfig, defaultPreset, validateConfig, THEMES as SERVER_THEMES } from "../src/config.js";
 import { buildTiles } from "../public/shared/model.js";
 
 const A = "111111111111111111";
@@ -317,6 +318,22 @@ test("obsSetup gives the overlay URL and the exact width/height of the preset ca
 });
 
 // ---------------------------------------------------------------- S12 templates
+test("editor theme options mirror the server theme enum with human labels", () => {
+  assert.deepEqual(THEMES.map((t) => t.value), SERVER_THEMES);
+  assert.deepEqual(THEMES.map((t) => t.value), ["pixel-cafe", "clean", "neon", "comic", "glass"]);
+  const by = Object.fromEntries(THEMES.map((t) => [t.value, t]));
+  assert.equal(by.neon.label, "Neón");
+  assert.equal(by.comic.label, "Cómic / sticker");
+  assert.equal(by.glass.label, "Glass / moderno");
+  for (const t of THEMES) {
+    assert.ok(t.label && t.description && t.description.length < 120, t.value);
+    const c = defaultConfig();
+    c.presets[0].theme = t.value;
+    assert.ok(validateConfig(c).ok, t.value);
+  }
+  assert.equal(newPreset("x", "X").theme, defaultPreset().theme);
+  for (const tpl of TEMPLATES) if (tpl.preset.theme) assert.ok(SERVER_THEMES.includes(tpl.preset.theme), tpl.key);
+});
 
 const REQUIRED_TEMPLATES = ["Fila abajo", "Columna al costado", "Squad en grilla", "PNGtuber solo", "Solo quien habla", "Burbujas", "Vertical", "En blanco"];
 

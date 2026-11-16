@@ -356,3 +356,23 @@ button.big { padding: 10px 20px; font-size: 16px; }
   body { display: block; overflow: auto; }
 }
 @media (prefers-reduced-motion: reduce) { button:active:not(:disabled) { transform: none; } }
+
+/* theme picker swatch + gallery schematics for the extra themes */
+.theme-pick { display: flex; align-items: center; gap: 8px; }
+.theme-pick select { flex: 1; min-width: 0; }
+.theme-swatch {
+  flex: none; width: 34px; height: 24px; box-sizing: border-box;
+  background: linear-gradient(135deg, var(--sw-bg) 0 55%, var(--sw-fg) 55% 100%);
+  box-shadow: 0 0 0 2px var(--k-night-3);
+}
+.theme-swatch.sw-neon { background: var(--sw-bg); box-shadow: 0 0 0 2px var(--sw-fg), 0 0 6px 1px var(--sw-fg); border-radius: 4px; }
+.theme-swatch.sw-comic { background: var(--sw-bg); box-shadow: 0 0 0 3px var(--sw-fg), 3px 3px 0 3px var(--sw-fg); transform: rotate(-4deg); }
+.theme-swatch.sw-glass { background: linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(200, 212, 255, 0.2)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7); border-radius: 8px; }
+.schem.theme-neon .schem-tile { background: #0c0f1f; box-shadow: 0 0 0 1px #22e4ff; border-radius: 2px; }
+.schem.theme-neon .schem-tile.talk { box-shadow: 0 0 0 1px #22e4ff, 0 0 5px 1px #22e4ff; }
+.schem.theme-comic .schem-tile { background: #f3e9d2; box-shadow: 0 0 0 2px #fff, 2px 2px 0 2px #111; transform: rotate(-4deg); }
+.schem.theme-comic .schem-tile:nth-child(even) { transform: rotate(4deg); }
+.schem.theme-comic .schem-tile.talk { background: #ffd23f; transform: scale(1.08); }
+.schem.theme-glass .schem-tile { background: linear-gradient(160deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.15)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7); border-radius: 3px; }
+.schem.theme-glass .schem-tile.talk { box-shadow: inset 0 0 0 1px #fff, 0 0 0 1px var(--k-teal), 0 0 4px 1px var(--k-teal); }
+.schem.round .schem-tile { border-radius: 50%; }

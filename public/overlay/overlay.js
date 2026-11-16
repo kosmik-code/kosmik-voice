@@ -9,6 +9,14 @@ const debug = params.get("debug") === "1";
 // ?demo=1 rotates a fake speaker over the configured users; ?demo=static freezes every state.
 const demo = params.get("demo");
 let demoTick = 0;
+// ?bg=busy (colourful test pattern) or ?bg=404850 (hex) paints a backdrop to judge legibility; OBS never needs it.
+const bg = params.get("bg");
+if (bg === "busy") {
+  document.body.style.background =
+    "repeating-linear-gradient(45deg, rgba(255,255,255,0.25) 0 40px, transparent 40px 80px), linear-gradient(90deg, #ff4d6d, #ffd23f, #3ddc97, #2fb7ff, #9b5de5, #fff1e6)";
+} else if (bg && /^[0-9a-f]{6}$/i.test(bg)) {
+  document.body.style.background = `#${bg}`;
+}
 
 const stage = document.getElementById("stage");
 const list = document.getElementById("tiles");
@@ -34,7 +42,7 @@ function applyPreset(p) {
   for (const [k, v] of Object.entries(vars)) stage.style.setProperty(k, String(v));
   stage.style.transform = l.offsetX || l.offsetY ? `translate(${l.offsetX}px, ${l.offsetY}px)` : "";
   stage.className = [
-    `theme-${p.theme}`, `dir-${l.direction}`, `ax-${l.alignX}`, `ay-${l.alignY}`,
+    `theme-${p.theme}`, `shape-${s.shape}`, `dir-${l.direction}`, `ax-${l.alignX}`, `ay-${l.alignY}`,
     s.frame ? "has-frame" : "", s.talkGlow ? "" : "no-glow",
     s.showNames ? "" : "no-names", s.showRoles ? "" : "no-roles", s.showMuteIcon ? "" : "no-mute-icon",
   ].filter(Boolean).join(" ");
@@ -70,7 +78,9 @@ function render() {
       nodes.set(t.id, el);
     }
     el.dataset.state = t.state;
-    el.className = `tile anim-${preset.style.talkAnimation}${t.hidden ? " is-hidden" : ""}`;
+    const asset = Boolean(t.image?.startsWith("/assets/"));
+    // has-asset: custom image (maybe a transparent cut-out); themes can outline its alpha instead of the box.
+    el.className = `tile anim-${preset.style.talkAnimation}${t.hidden ? " is-hidden" : ""}${asset ? " has-asset" : ""}`;
     const img = el.querySelector("img");
     if (t.image) {
       // Only touch src when it changes so GIFs keep playing and nothing flickers.
@@ -78,7 +88,7 @@ function render() {
         img.hidden = false;
         img.setAttribute("src", t.image);
       }
-      img.classList.toggle("is-asset", t.image.startsWith("/assets/"));
+      img.classList.toggle("is-asset", asset);
     } else {
       img.removeAttribute("src");
       img.hidden = true;

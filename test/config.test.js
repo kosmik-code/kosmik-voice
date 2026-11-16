@@ -127,3 +127,21 @@ test("preset canvas: optional, defaults to 1920x1080, accepts the four canvases 
   assert.equal(e.ok, false);
   assert.deepEqual(e.errors.map((x) => x.path), ["presets[0].canvas"]);
 });
+
+test("theme accepts pixel-cafe, clean, neon, comic and glass; rejects unknown", () => {
+  for (const theme of ["pixel-cafe", "clean", "neon", "comic", "glass"]) {
+    const c = defaultConfig();
+    c.presets[0].theme = theme;
+    const r = validateConfig(c);
+    assert.equal(r.ok, true, `${theme}: ${JSON.stringify(r.errors)}`);
+    assert.equal(r.value.presets[0].theme, theme);
+  }
+  for (const theme of ["cyber", "Neon", "", 3]) {
+    const c = defaultConfig();
+    c.presets[0].theme = theme;
+    const r = validateConfig(c);
+    assert.equal(r.ok, false, String(theme));
+    assert.deepEqual(r.errors.map((e) => e.path), ["presets[0].theme"]);
+    assert.equal(r.errors[0].message, "must be one of pixel-cafe, clean, neon, comic, glass");
+  }
+});

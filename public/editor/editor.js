@@ -4,7 +4,7 @@ import {
   FIELDS, PRESET_LABELS, USER_LABELS, SIM_STATES, uniquePresetId, mapErrors, describePath, isDirty, simulationVoice,
   newUser, removeUser, renameUserId, duplicatePreset, deletePreset, moveItem, assetUsers,
   statusText, getAt, setAt, knownPaths, newPreset, CANVASES, canvasSize, TEMPLATES, LIMIT_PRESETS, presetFromTemplate,
-  callMembers, setAlias, discordHelp, firstSteps, obsSetup,
+  callMembers, setAlias, discordHelp, firstSteps, obsSetup, THEMES,
 } from "/editor/logic.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -891,7 +891,7 @@ function renderPresets() {
           { value: "slots", label: "Lugar fijo por persona" },
         ], { onChange: () => change(() => null), hint: pr.mode === "slots" ? "Cada persona tiene su lugar; si no está, dice OFFLINE." : "Aparece quien entra a la llamada y desaparece quien sale." }),
         selectField(`presets[${i}].canvas`, PRESET_LABELS.canvas, CANVASES, { onChange: onCanvas, hint: "Igual al de OBS: Ajustes › Video › Resolución base (lienzo)." }),
-        selectField(`presets[${i}].theme`, PRESET_LABELS.theme, [{ value: "pixel-cafe", label: "Pixel café" }, { value: "clean", label: "Limpio (neutro)" }]),
+        themeField(i),
         positionPicker(i),
         h("div", { class: "stack" },
           numberField(`presets[${i}].layout.size`, sizeSpec, { label: "Tamaño de cada imagen (px)" }),
@@ -919,6 +919,31 @@ function renderPresets() {
       h("div", { class: "grid2", "data-path": `presets[${i}].style` }, pick("style").map((k) => schemaField("style", k))),
     ),
   ];
+}
+
+/** Theme select plus a small colour sample and a one-line description of the chosen theme. */
+function themeField(i) {
+  const path = `presets[${i}].theme`;
+  const theme = (v) => THEMES.find((t) => t.value === v) ?? THEMES[0];
+  const sel = h("select", {}, THEMES.map((t) => h("option", { value: t.value, text: t.label })));
+  sel.value = getAt(S.draft, path);
+  const swatch = h("span", { class: "theme-swatch", "aria-hidden": "true" });
+  const paint = () => {
+    const t = theme(sel.value);
+    swatch.className = `theme-swatch sw-${t.value}`;
+    swatch.style.setProperty("--sw-bg", t.swatch[0]);
+    swatch.style.setProperty("--sw-fg", t.swatch[1]);
+    const hint = document.getElementById(`${sel.id}-hint`);
+    if (hint) hint.textContent = t.description;
+  };
+  sel.addEventListener("change", () => {
+    setAt(S.draft, path, sel.value);
+    paint();
+    edited(path);
+  });
+  const el = field(path, PRESET_LABELS.theme, h("div", { class: "theme-pick" }, sel, swatch), { hint: theme(sel.value).description });
+  paint();
+  return el;
 }
 
 // ---------------------------------------------------------------- template gallery

@@ -9,6 +9,8 @@ export const IMAGE_STATES = ["idle", "talking", "muted", "deafened"];
 export const IMAGE_NAME = /^[a-z0-9][a-z0-9._-]{0,79}\.(png|gif|webp|jpe?g)$/i;
 // OBS canvas the preset is designed for (editor preview + OBS size guidance; the overlay ignores it).
 export const CANVASES = ["1920x1080", "2560x1440", "1280x720", "1080x1920"];
+// Overlay themes (.theme-<id> in public/overlay/overlay.css). Additive only: old configs must stay valid.
+export const THEMES = ["pixel-cafe", "clean", "neon", "comic", "glass"];
 
 const USER_ID = /^\d{17,20}$/;
 const PRESET_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -166,7 +168,7 @@ function checkPreset(errors, p, input, userIds) {
     style: checkGroup(errors, `${p}.style`, input.style, STYLE),
   };
   checkField(errors, `${p}.mode`, preset.mode, ["enum", null, ["reactive", "slots"]]);
-  checkField(errors, `${p}.theme`, preset.theme, ["enum", null, ["pixel-cafe", "clean"]]);
+  checkField(errors, `${p}.theme`, preset.theme, ["enum", null, THEMES]);
   checkField(errors, `${p}.canvas`, preset.canvas, ["enum", null, CANVASES]);
   checkField(errors, `${p}.showUnlisted`, preset.showUnlisted, ["bool"]);
   const users = input.users ?? [];
