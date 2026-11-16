@@ -7,53 +7,58 @@
   <link rel="stylesheet" href="/editor/editor.css">
 </head>
 <body>
+  <!-- Static text is Spanish until editor.js applies the chosen language (data-i18n = text, data-i18n-attr = attr:key;...). -->
   <header class="bar">
     <h1 class="brand">Kosmik<span>Voice</span></h1>
-    <nav class="tabs" aria-label="Secciones">
+    <nav class="tabs" aria-label="Secciones" data-i18n-attr="aria-label:html.sections">
       <a href="#discord" data-tab="discord">Discord</a>
-      <a href="#users" data-tab="users">Usuarios</a>
-      <a href="#presets" data-tab="presets">Presets</a>
+      <a href="#users" data-tab="users" data-i18n="html.tab.users">Usuarios</a>
+      <a href="#presets" data-tab="presets" data-i18n="html.tab.presets">Presets</a>
     </nav>
-    <button id="steps-toggle" type="button" class="small" aria-controls="steps">Primeros pasos</button>
-    <span id="conn" class="pill tone-bad" title="Estado de Discord">…</span>
+    <button id="steps-toggle" type="button" class="small" aria-controls="steps" data-i18n="html.firstSteps">Primeros pasos</button>
+    <span id="conn" class="pill tone-bad" title="Estado de Discord" data-i18n-attr="title:html.connTitle">…</span>
     <div class="save-box">
-      <span id="dirty" class="dirty" hidden>● Cambios sin guardar</span>
-      <button id="discard" type="button" disabled>Descartar</button>
-      <button id="save" type="button" class="primary" disabled title="Ctrl+S">Guardar cambios</button>
+      <span id="dirty" class="dirty" hidden data-i18n="html.dirty">● Cambios sin guardar</span>
+      <button id="discard" type="button" disabled data-i18n="html.discard">Descartar</button>
+      <button id="save" type="button" class="primary" disabled title="Ctrl+S" data-i18n="html.save">Guardar cambios</button>
+    </div>
+    <div id="lang-switch" class="seg small lang-switch" role="group" aria-label="Idioma" data-i18n-attr="aria-label:lang.group">
+      <button type="button" data-lang="es" lang="es" aria-label="Español" title="Español" aria-pressed="true" class="active">ES</button>
+      <button type="button" data-lang="en" lang="en" aria-label="English" title="English" aria-pressed="false">EN</button>
     </div>
   </header>
 
   <div id="notice" class="notice" hidden></div>
   <div id="errors" class="errors" hidden></div>
-  <section id="steps" class="steps-bar" aria-label="Primeros pasos" hidden></section>
+  <section id="steps" class="steps-bar" aria-label="Primeros pasos" data-i18n-attr="aria-label:html.firstSteps" hidden></section>
 
   <main class="layout">
     <section id="panel" class="panel" aria-live="polite"></section>
 
-    <aside class="preview" aria-label="Vista previa">
+    <aside class="preview" aria-label="Vista previa" data-i18n-attr="aria-label:html.preview">
       <div class="preview-head">
-        <h2>Vista previa</h2>
-        <label class="mini">Preset <select id="pv-preset"></select></label>
-        <label class="mini">Lienzo <select id="pv-canvas"></select></label>
-        <label class="mini">Fondo
+        <h2 data-i18n="html.preview">Vista previa</h2>
+        <label class="mini"><span data-i18n="html.pvPreset">Preset</span> <select id="pv-preset"></select></label>
+        <label class="mini"><span data-i18n="html.pvCanvas">Lienzo</span> <select id="pv-canvas"></select></label>
+        <label class="mini"><span data-i18n="html.pvBg">Fondo</span>
           <select id="pv-bg">
-            <option value="checker">Cuadriculado</option>
-            <option value="dark">Oscuro</option>
-            <option value="light">Claro</option>
+            <option value="checker" data-i18n="html.bg.checker">Cuadriculado</option>
+            <option value="dark" data-i18n="html.bg.dark">Oscuro</option>
+            <option value="light" data-i18n="html.bg.light">Claro</option>
           </select>
         </label>
       </div>
       <div id="pv-stage" class="stage bg-checker">
-        <iframe id="pv-frame" title="Vista previa del overlay" src="/overlay/preview?preview=1"></iframe>
+        <iframe id="pv-frame" title="Vista previa del overlay" data-i18n-attr="title:html.frameTitle" src="/overlay/preview?preview=1"></iframe>
       </div>
       <p id="pv-caption" class="caption"></p>
 
       <div class="sim card">
         <div class="sim-head">
-          <h3>Simular estados</h3>
-          <div class="seg" role="radiogroup" aria-label="Qué mostrar">
-            <label><input type="radio" name="pv-source" value="live"> Llamada real</label>
-            <label><input type="radio" name="pv-source" value="sim" checked> Simulación</label>
+          <h3 data-i18n="html.simTitle">Simular estados</h3>
+          <div class="seg" role="radiogroup" aria-label="Qué mostrar" data-i18n-attr="aria-label:html.simWhat">
+            <label><input type="radio" name="pv-source" value="live"> <span data-i18n="html.simLive">Llamada real</span></label>
+            <label><input type="radio" name="pv-source" value="sim" checked> <span data-i18n="html.simSim">Simulación</span></label>
           </div>
         </div>
         <div id="sim-body"></div>

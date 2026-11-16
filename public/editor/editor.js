@@ -4,17 +4,15 @@ import {
   FIELDS, PRESET_LABELS, USER_LABELS, SIM_STATES, uniquePresetId, mapErrors, describePath, isDirty, simulationVoice,
   newUser, removeUser, renameUserId, duplicatePreset, deletePreset, moveItem, assetUsers,
   statusText, getAt, setAt, knownPaths, newPreset, CANVASES, canvasSize, TEMPLATES, LIMIT_PRESETS, presetFromTemplate,
-  callMembers, setAlias, discordHelp, firstSteps, obsSetup, THEMES,
+  callMembers, setAlias, discordHelp, firstSteps, obsSetup, THEMES, pickLanguage,
 } from "/editor/logic.js";
+import { t, parts, getLanguage, setLanguage } from "/editor/i18n.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const TABS = ["discord", "users", "presets"];
-const IMAGE_SLOTS = [
-  ["idle", "Callado"],
-  ["talking", "Hablando"],
-  ["muted", "Muteado"],
-  ["deafened", "Sordo"],
-];
+// Image slots per user; labels come from the sim.* strings (Callado, Hablando, ...).
+const IMAGE_SLOTS = ["idle", "talking", "muted", "deafened"];
+const LANG_KEY = "kv-editor-lang";
 // Preset fields shown up front; everything else lives under "Ajustes avanzados".
 const BASIC = { layout: ["alignX", "alignY", "size"], style: ["showNames", "talkAnimation"] };
 const FLAGS_KEY = "kv.firstSteps";
@@ -35,9 +33,60 @@ const S = {
   advancedOpen: false,
   galleryCanvas: CANVASES[0].value,
   flags: loadFlags(), // { hidden, templatePicked, obsCopied } kept in this browser
-  libraryMsg: "",
-  discordMsg: null,
+  libraryMsg: null, // { key, params } so it follows the language
+  discordMsg: null, // { tone, key }
 };
+
+// ---------------------------------------------------------------- language (editor UI only)
+
+function initialLanguage() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(LANG_KEY);
+  } catch {
+    // Private mode: follow the browser.
+  }
+  return pickLanguage(stored, navigator.languages?.length ? navigator.languages : [navigator.language]);
+}
+
+/** Set the language and translate the static chrome of index.html. Never touches the config. */
+function applyLanguage(lang) {
+  setLanguage(lang);
+  document.documentElement.lang = getLanguage();
+  document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-attr]").forEach((el) => {
+    for (const pair of el.dataset.i18nAttr.split(";")) {
+      const [attr, key] = pair.split(":");
+      el.setAttribute(attr, t(key));
+    }
+  });
+  document.querySelectorAll("#lang-switch button").forEach((b) => {
+    const on = b.dataset.lang === getLanguage();
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+  $("#pv-canvas").replaceChildren(...CANVASES.map((c) => h("option", { value: c.value, text: c.label })));
+}
+
+/** ES/EN switch: re-render everything in place; the draft, dirty state and typed Discord fields survive. */
+function switchLanguage(lang) {
+  if (lang === getLanguage()) return;
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    // Private mode: the choice lasts until reload.
+  }
+  const typed = ["#discord-id", "#discord-secret"].map((sel) => [sel, $(sel)?.value]);
+  applyLanguage(lang);
+  if (S.errors.summary.length) S.errors = mapErrors(S.errors.summary.map((e) => ({ path: e.path, message: e.raw })), knownPaths(S.draft));
+  if (S.draft) render();
+  else {
+    renderConn();
+    layoutPreview();
+  }
+  if (dialog.open) renderGallery();
+  for (const [sel, value] of typed) if (value != null && $(sel)) $(sel).value = value;
+}
 
 function loadFlags() {
   try {
@@ -79,15 +128,15 @@ function h(tag, props, ...kids) {
 }
 
 function toast(text, tone = "ok") {
-  const t = $("#toast");
-  t.textContent = text;
-  t.className = `toast tone-${tone}`;
-  t.hidden = false;
+  const box = $("#toast");
+  box.textContent = text;
+  box.className = `toast tone-${tone}`;
+  box.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), tone === "ok" ? 3500 : 7000);
+  toast.timer = setTimeout(() => (box.hidden = true), tone === "ok" ? 3500 : 7000);
 }
 
-async function copyText(text, message = "Copiado") {
+async function copyText(text, message = t("ed.copied")) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -131,8 +180,8 @@ async function loadAssets() {
 
 async function uploadFile(file) {
   const r = await api(`/api/assets?name=${encodeURIComponent(file.name)}`, { method: "POST", raw: file, type: file.type });
-  if (r.status === 413) throw new Error(`«${file.name}» supera 10 MB`);
-  if (!r.ok) throw new Error(`«${file.name}»: solo imágenes PNG, GIF, WebP o JPG`);
+  if (r.status === 413) throw new Error(t("ed.upload.tooBig", { name: file.name }));
+  if (!r.ok) throw new Error(t("ed.upload.badType", { name: file.name }));
   await loadAssets();
   return r.data.name;
 }
@@ -157,7 +206,7 @@ function refreshChrome() {
   $("#discard").disabled = !d && !S.remote;
   const n = $("#notice");
   n.hidden = !S.remote;
-  n.textContent = S.remote ? "La configuración se guardó desde otra ventana. «Descartar» carga esa versión (perdés tus cambios sin guardar)." : "";
+  n.textContent = S.remote ? t("ed.remote") : "";
   renderErrorSummary();
 }
 
@@ -191,21 +240,21 @@ async function save() {
   try {
     r = await api("/api/config", { method: "PUT", body: S.draft });
   } catch {
-    toast("No se guardó: Kosmik Voice no responde. Tus cambios siguen acá, probá de nuevo.", "bad");
+    toast(t("ed.save.offline"), "bad");
     refreshChrome();
     return;
   }
   if (r.ok) {
     setBase(r.data);
     S.errors = { fields: {}, summary: [] };
-    toast("Guardado ✔ OBS ya muestra los cambios.");
+    toast(t("ed.save.ok"));
     render();
   } else if (r.status === 400 && r.data?.errors) {
     S.errors = mapErrors(r.data.errors, knownPaths(S.draft));
-    toast(`No se guardó: ${r.data.errors.length === 1 ? "hay un campo" : `hay ${r.data.errors.length} campos`} para corregir (marcados en rojo).`, "bad");
+    toast(r.data.errors.length === 1 ? t("ed.save.invalid1") : t("ed.save.invalidN", { n: r.data.errors.length }), "bad");
     render();
   } else {
-    toast(`No se guardó (${r.status}${r.data?.error ? `: ${r.data.error}` : ""}). Tus cambios siguen acá.`, "bad");
+    toast(t("ed.save.failed", { detail: `${r.status}${r.data?.error ? `: ${r.data.error}` : ""}` }), "bad");
     refreshChrome();
   }
 }
@@ -214,7 +263,7 @@ function discard() {
   setBase(S.remote ?? S.base);
   S.errors = { fields: {}, summary: [] };
   render();
-  toast("Cambios descartados.");
+  toast(t("ed.discarded"));
 }
 
 // ---------------------------------------------------------------- field builders
@@ -237,7 +286,7 @@ function field(path, label, control, { hint, wide } = {}) {
 function numberField(path, spec, { label = spec.label, hint } = {}) {
   const value = getAt(S.draft, path);
   const step = spec.step ?? 1;
-  const range = h("input", { type: "range", min: spec.min, max: spec.max, step, value, "aria-label": `${label} (deslizador)`, tabindex: -1 });
+  const range = h("input", { type: "range", min: spec.min, max: spec.max, step, value, "aria-label": t("ed.slider", { label }), tabindex: -1 });
   const num = h("input", { type: "number", min: spec.min, max: spec.max, step, value, class: "num" });
   const set = (src, other) => {
     other.value = src.value;
@@ -283,8 +332,8 @@ function textField(path, label, { max, placeholder, onInput, event = "input", hi
 function colorField(path, label, { allowEmpty } = {}) {
   const value = getAt(S.draft, path) || "";
   const valid6 = (v) => /^#[0-9a-f]{6}$/i.test(v.slice(0, 7));
-  const pick = h("input", { type: "color", value: valid6(value) ? value.slice(0, 7) : "#ffcf8b", "aria-label": `${label} (selector)` });
-  const text = h("input", { type: "text", class: "hex", maxlength: 9, value, placeholder: allowEmpty ? "sin color" : "#rrggbb", spellcheck: "false" });
+  const pick = h("input", { type: "color", value: valid6(value) ? value.slice(0, 7) : "#ffcf8b", "aria-label": t("ed.colorPicker", { label }) });
+  const text = h("input", { type: "text", class: "hex", maxlength: 9, value, placeholder: allowEmpty ? t("ed.noColor") : "#rrggbb", spellcheck: "false" });
   pick.addEventListener("input", () => {
     text.value = pick.value;
     setAt(S.draft, path, pick.value);
@@ -324,7 +373,7 @@ function renderErrorSummary() {
   box.hidden = !list.length;
   if (!list.length) return box.replaceChildren();
   box.replaceChildren(
-    h("strong", { text: `No se guardó. Corregí ${list.length === 1 ? "este campo" : `estos ${list.length} campos`}:` }),
+    h("strong", { text: list.length === 1 ? t("ed.errors.one") : t("ed.errors.many", { n: list.length }) }),
     h("ul", {}, list.map((e) => h("li", {}, h("button", { type: "button", class: "link", onclick: () => goToError(e), text: describePath(e.path, S.draft) }), ` — ${e.message}`))),
   );
 }
@@ -356,9 +405,9 @@ function goTo(tab, then) {
 }
 
 const STEP_ACTIONS = {
-  discord: ["Ir a Discord", () => goTo("discord", () => $("#discord-id")?.focus())],
-  preset: ["Elegir plantilla", () => goTo("presets", openGallery)],
-  obs: ["Copiar para OBS", () => goTo("presets", () => $("#copy-obs")?.focus())],
+  discord: ["ed.steps.goDiscord", () => goTo("discord", () => $("#discord-id")?.focus())],
+  preset: ["ed.steps.pickTemplate", () => goTo("presets", openGallery)],
+  obs: ["ed.steps.copyObs", () => goTo("presets", () => $("#copy-obs")?.focus())],
 };
 
 function renderSteps() {
@@ -371,18 +420,18 @@ function renderSteps() {
   const done = steps.filter((s) => s.done).length;
   box.replaceChildren(
     h("div", { class: "steps-head" },
-      h("h2", { text: done === steps.length ? "¡Listo! Ya está todo armado" : "Primeros pasos" }),
-      h("span", { class: "steps-count", text: `${done} de ${steps.length}` }),
-      h("button", { type: "button", class: "small", onclick: () => setFlag("hidden", true), text: "Ocultar" }),
+      h("h2", { text: done === steps.length ? t("ed.steps.allDone") : t("ed.steps.title") }),
+      h("span", { class: "steps-count", text: t("ed.steps.count", { done, total: steps.length }) }),
+      h("button", { type: "button", class: "small", onclick: () => setFlag("hidden", true), text: t("ed.steps.hide") }),
     ),
     h("ol", { class: "checklist" }, steps.map((s, i) => h("li", { class: s.done ? "done" : "" },
       h("span", { class: "check-mark", "aria-hidden": "true", text: s.done ? "✔" : String(i + 1) }),
       h("div", { class: "check-text" },
         h("strong", { text: s.label }),
-        h("span", { class: "sr-only", text: s.done ? " (hecho)" : " (pendiente)" }),
-        h("small", { class: "hint", text: s.done ? "Hecho" : s.hint }),
+        h("span", { class: "sr-only", text: s.done ? t("ed.steps.srDone") : t("ed.steps.srPending") }),
+        h("small", { class: "hint", text: s.done ? t("ed.steps.done") : s.hint }),
       ),
-      s.done ? null : h("button", { type: "button", class: i === steps.findIndex((x) => !x.done) ? "small primary" : "small", onclick: STEP_ACTIONS[s.key][1], text: STEP_ACTIONS[s.key][0] }),
+      s.done ? null : h("button", { type: "button", class: i === steps.findIndex((x) => !x.done) ? "small primary" : "small", onclick: STEP_ACTIONS[s.key][1], text: t(STEP_ACTIONS[s.key][0]) }),
     ))),
   );
 }
@@ -393,8 +442,8 @@ const PORTAL_URL = "https://discord.com/developers/applications";
 
 function renderDiscord() {
   const info = S.discord;
-  const idInput = h("input", { type: "text", id: "discord-id", inputmode: "numeric", value: info?.clientId ?? "", placeholder: "ej. 1234567890123456789", spellcheck: "false", "aria-describedby": "discord-id-hint" });
-  const secret = h("input", { type: "password", id: "discord-secret", value: "", autocomplete: "off", placeholder: info?.hasClientSecret ? "guardado — dejalo vacío para no cambiarlo" : "pegá el Client Secret", "aria-describedby": "discord-secret-hint" });
+  const idInput = h("input", { type: "text", id: "discord-id", inputmode: "numeric", value: info?.clientId ?? "", placeholder: t("ed.discord.idPlaceholder"), spellcheck: "false", "aria-describedby": "discord-id-hint" });
+  const secret = h("input", { type: "password", id: "discord-secret", value: "", autocomplete: "off", placeholder: info?.hasClientSecret ? t("ed.discord.secretKept") : t("ed.discord.secretPaste"), "aria-describedby": "discord-secret-hint" });
   const msg = S.discordMsg;
   const onSave = async (ev) => {
     ev.preventDefault();
@@ -407,11 +456,11 @@ function renderDiscord() {
       // The server saved discord.clientId into the config: keep base and draft in sync with it.
       S.base.discord.clientId = r.data.clientId;
       S.draft.discord.clientId = r.data.clientId;
-      S.discordMsg = { tone: "ok", text: "Guardado. Mirá Discord: si aparece una ventana pidiendo permiso, tocá «Autorizar»." };
-      toast("Datos de Discord guardados.");
+      S.discordMsg = { tone: "ok", key: "ed.discord.savedMsg" };
+      toast(t("ed.discord.savedToast"));
     } else {
-      S.discordMsg = { tone: "bad", text: r?.data?.error ? "El Client ID tiene que ser el número de tu aplicación (17 a 20 dígitos)." : "No se pudo guardar: Kosmik Voice no responde." };
-      toast("No se guardaron los datos de Discord.", "bad");
+      S.discordMsg = { tone: "bad", key: r?.data?.error ? "ed.discord.badId" : "ed.discord.offline" };
+      toast(t("ed.discord.failToast"), "bad");
     }
     render();
   };
@@ -420,40 +469,40 @@ function renderDiscord() {
     if (r?.ok) {
       S.discord = r.data;
       S.status = r.data.status;
-      S.discordMsg = { tone: "ok", text: "Sesión cerrada. Discord va a pedir permiso de nuevo." };
+      S.discordMsg = { tone: "ok", key: "ed.discord.loggedOut" };
     }
     render();
   };
-  const q = (t) => h("strong", { text: t });
+  const q = (word) => h("strong", { text: word });
   return [
     h("div", { class: "card" },
-      h("h2", { text: "Conectar con Discord" }),
-      h("p", { class: "lead", text: "Se hace una sola vez. Kosmik Voice usa una aplicación de Discord tuya para saber quién está en tu llamada y quién habla. No entra ningún bot a la llamada." }),
+      h("h2", { text: t("ed.discord.title") }),
+      h("p", { class: "lead", text: t("ed.discord.lead") }),
       h("ol", { class: "steps numbered" },
-        h("li", {}, "Entrá a ", h("a", { href: PORTAL_URL, target: "_blank", rel: "noopener noreferrer", text: "discord.com/developers/applications" }), " e iniciá sesión con tu cuenta de Discord."),
-        h("li", {}, "Tocá ", q("New Application"), ", ponele un nombre (por ejemplo ", h("code", { text: "Kosmik Voice" }), "), aceptá los términos y tocá ", q("Create"), "."),
-        h("li", {}, "En el menú de la izquierda entrá a ", q("OAuth2"), "."),
-        h("li", {}, "Copiá el ", q("Client ID"), " y pegalo abajo."),
-        h("li", {}, "Tocá ", q("Reset Secret"), ", confirmá, copiá el secret que aparece y pegalo abajo en ", q("Client Secret"), "."),
-        h("li", {}, "En esa misma página, en ", q("Redirects"), ", tocá ", q("Add Redirect"), ", escribí ", h("code", { text: "http://127.0.0.1" }), " y tocá ", q("Save Changes"), "."),
-        h("li", {}, "Con Discord de escritorio abierto, tocá ", q("Guardar y conectar"), " acá y, en la ventana que aparece en Discord, tocá ", q("Autorizar"), "."),
+        h("li", {}, parts("ed.discord.step1", { link: h("a", { href: PORTAL_URL, target: "_blank", rel: "noopener noreferrer", text: "discord.com/developers/applications" }) })),
+        h("li", {}, parts("ed.discord.step2", { newApp: q("New Application"), name: h("code", { text: "Kosmik Voice" }), create: q("Create") })),
+        h("li", {}, parts("ed.discord.step3", { oauth: q("OAuth2") })),
+        h("li", {}, parts("ed.discord.step4", { clientId: q("Client ID") })),
+        h("li", {}, parts("ed.discord.step5", { reset: q("Reset Secret"), secret: q("Client Secret") })),
+        h("li", {}, parts("ed.discord.step6", { redirects: q("Redirects"), add: q("Add Redirect"), url: h("code", { text: "http://127.0.0.1" }), save: q("Save Changes") })),
+        h("li", {}, parts("ed.discord.step7", { connect: q(t("ed.discord.submit")), authorize: q(t("ed.discord.authorize")) })),
       ),
-      h("p", { class: "warn-box", role: "note" }, h("strong", { text: "Ojo: " }), "si en el paso 6 no tocás «Save Changes», Discord muestra el error «Missing redirect_uri» y no conecta."),
+      h("p", { class: "warn-box", role: "note" }, h("strong", { text: t("ed.discord.warnLead") }), t("ed.discord.warn")),
       h("form", { class: "grid2", onsubmit: onSave },
         h("div", { class: "field", "data-path": "discord.clientId" },
           h("label", { for: "discord-id", text: "Client ID" }),
           idInput,
-          h("small", { class: "hint", id: "discord-id-hint", text: "Un número largo (17 a 20 dígitos). Discord también lo llama Application ID." }),
+          h("small", { class: "hint", id: "discord-id-hint", text: t("ed.discord.idHint") }),
         ),
         h("div", { class: "field" },
-          h("label", { for: "discord-secret" }, "Client Secret ", info?.hasClientSecret ? h("span", { class: "badge tone-ok", text: "guardado" }) : h("span", { class: "badge tone-warn", text: "falta" })),
+          h("label", { for: "discord-secret" }, "Client Secret ", info?.hasClientSecret ? h("span", { class: "badge tone-ok", text: t("ed.discord.badgeSaved") }) : h("span", { class: "badge tone-warn", text: t("ed.discord.badgeMissing") })),
           secret,
-          h("small", { class: "hint", id: "discord-secret-hint", text: "Se guarda solo en esta PC y nunca se vuelve a mostrar." }),
+          h("small", { class: "hint", id: "discord-secret-hint", text: t("ed.discord.secretHint") }),
         ),
         h("div", { class: "actions wide" },
-          h("button", { type: "submit", class: "primary", text: "Guardar y conectar" }),
-          h("button", { type: "button", onclick: logout, disabled: !info?.hasToken, text: "Cerrar sesión de Discord" }),
-          msg ? h("span", { class: `msg tone-${msg.tone}`, role: "status", text: msg.text }) : null,
+          h("button", { type: "submit", class: "primary", text: t("ed.discord.submit") }),
+          h("button", { type: "button", onclick: logout, disabled: !info?.hasToken, text: t("ed.discord.logout") }),
+          msg ? h("span", { class: `msg tone-${msg.tone}`, role: "status", text: t(msg.key) }) : null,
         ),
       ),
     ),
@@ -467,18 +516,18 @@ function discordStatus() {
   const help = discordHelp(S.status);
   const voice = S.voice;
   return h("div", { class: "card", id: "discord-status" },
-    h("h2", { text: "Estado" }),
+    h("h2", { text: t("ed.status.title") }),
     h("p", { class: "status-line" },
       h("span", { class: `pill tone-${st.tone}`, text: st.text }),
-      info ? h("span", { class: `badge tone-${info.hasToken ? "ok" : "warn"}`, text: info.hasToken ? "con permiso" : "sin permiso todavía" }) : null,
+      info ? h("span", { class: `badge tone-${info.hasToken ? "ok" : "warn"}`, text: info.hasToken ? t("ed.status.authorized") : t("ed.status.unauthorized") }) : null,
     ),
     help ? h("div", { class: "help-box" }, h("strong", { text: help.title }), h("ol", {}, help.steps.map((s) => h("li", { text: s })))) : null,
-    st.detail && S.status?.state !== "ready" ? h("details", { class: "detail" }, h("summary", { text: "Detalle técnico" }), h("code", { class: "detail-code", text: st.detail })) : null,
+    st.detail && S.status?.state !== "ready" ? h("details", { class: "detail" }, h("summary", { text: t("ed.status.detail") }), h("code", { class: "detail-code", text: st.detail })) : null,
     voice?.channel
       ? h("div", {},
-          h("p", {}, "Canal de voz: ", h("strong", { text: voice.channel.name || voice.channel.id }), ` · ${voice.members.length} ${voice.members.length === 1 ? "persona" : "personas"}`),
-          h("ul", { class: "members" }, voice.members.map((m) => h("li", {}, avatarImg(m.avatarUrl), h("span", { text: m.name }), m.speaking ? h("span", { class: "badge tone-ok", text: "hablando" }) : null))))
-      : h("p", { class: "hint", text: S.status?.state === "ready" ? "Conectado. Entrá a un canal de voz en Discord y acá vas a ver quién está." : "Cuando esté conectado y estés en un canal de voz, acá vas a ver quién está." }),
+          h("p", {}, t("ed.status.channel"), h("strong", { text: voice.channel.name || voice.channel.id }), ` · ${t(voice.members.length === 1 ? "ed.people.one" : "ed.people.many", { n: voice.members.length })}`),
+          h("ul", { class: "members" }, voice.members.map((m) => h("li", {}, avatarImg(m.avatarUrl), h("span", { text: m.name }), m.speaking ? h("span", { class: "badge tone-ok", text: t("ed.badge.talking") }) : null))))
+      : h("p", { class: "hint", text: S.status?.state === "ready" ? t("ed.status.readyHint") : t("ed.status.waitHint") }),
   );
 }
 
@@ -502,14 +551,14 @@ function refreshLive() {
 function imageSlot(i, state, label) {
   const path = `users[${i}].images.${state}`;
   const current = getAt(S.draft, path) || "";
-  const who = S.draft.users[i].displayName || liveName(S.draft.users[i].id) || "esta persona";
+  const who = S.draft.users[i].displayName || liveName(S.draft.users[i].id) || t("ed.thisPerson");
   const file = h("input", { type: "file", accept: "image/png,image/gif,image/webp,image/jpeg", hidden: true });
   const assign = async (f) => {
     try {
       const name = await uploadFile(f);
       setAt(S.draft, path, name);
       change(() => null);
-      toast(`Imagen «${name}» puesta en «${label}». Acordate de guardar.`);
+      toast(t("ed.slot.assigned", { name, label }));
     } catch (err) {
       toast(err.message, "bad");
     }
@@ -517,12 +566,12 @@ function imageSlot(i, state, label) {
   file.addEventListener("change", () => file.files[0] && assign(file.files[0]));
   const zone = h("button", {
     type: "button", class: `drop-zone${current ? " has-image" : ""}`, onclick: () => file.click(),
-    "aria-label": current ? `${label} de ${who}: ${current}. Elegir otra imagen` : `${label} de ${who}: elegir imagen`,
-  }, current ? h("img", { src: assetUrl(current), alt: "" }) : h("span", { class: "drop-text", text: "Arrastrá una imagen o hacé clic" }));
-  const sel = h("select", { "aria-label": `${label} de ${who}: elegir una imagen ya subida` },
-    h("option", { value: "", text: state === "idle" ? "(avatar de Discord)" : "(usa la de «Callado»)" }),
+    "aria-label": current ? t("ed.slot.ariaCurrent", { label, who, current }) : t("ed.slot.ariaEmpty", { label, who }),
+  }, current ? h("img", { src: assetUrl(current), alt: "" }) : h("span", { class: "drop-text", text: t("ed.slot.drop") }));
+  const sel = h("select", { "aria-label": t("ed.slot.ariaSelect", { label, who }) },
+    h("option", { value: "", text: state === "idle" ? t("ed.slot.discordAvatar") : t("ed.slot.usesIdle", { idle: t("sim.idle") }) }),
     S.assets.map((a) => h("option", { value: a.name, text: a.name })),
-    current && !S.assets.some((a) => a.name === current) ? h("option", { value: current, text: `${current} (no existe)` }) : null,
+    current && !S.assets.some((a) => a.name === current) ? h("option", { value: current, text: t("ed.slot.missing", { name: current }) }) : null,
   );
   sel.value = current;
   sel.addEventListener("change", () => {
@@ -530,10 +579,10 @@ function imageSlot(i, state, label) {
     change(() => null);
   });
   const slot = h("div", { class: `slot field${state === "idle" ? " main" : ""}`, "data-path": path },
-    h("div", { class: "slot-head" }, h("strong", { text: label }), h("span", { class: "hint", text: state === "idle" ? "la única necesaria" : "opcional" })),
+    h("div", { class: "slot-head" }, h("strong", { text: label }), h("span", { class: "hint", text: state === "idle" ? t("ed.slot.required") : t("ed.slot.optional") })),
     zone,
     sel,
-    current ? h("button", { type: "button", class: "small", onclick: () => (setAt(S.draft, path, ""), change(() => null)), text: "Quitar imagen" }) : null,
+    current ? h("button", { type: "button", class: "small", onclick: () => (setAt(S.draft, path, ""), change(() => null)), text: t("ed.slot.remove") }) : null,
     file,
   );
   dropTarget(slot, (files) => assign(files[0]));
@@ -548,15 +597,15 @@ function syncAliasInputs(idx, source) {
   const live = document.querySelector(`[data-alias="${CSS.escape(u.id)}"]`);
   if (live && live !== source) live.value = u.displayName;
   const title = document.querySelector(`[data-user-title="${idx}"]`);
-  if (title) title.textContent = u.displayName || liveName(u.id) || "Persona sin alias";
+  if (title) title.textContent = u.displayName || liveName(u.id) || t("ed.user.noAlias");
 }
 
 function userCard(u, i) {
   const p = (k) => `users[${i}].${k}`;
   const discordName = liveName(u.id);
-  const idField = textField(p("id"), "ID de Discord", {
+  const idField = textField(p("id"), USER_LABELS.id, {
     max: 20,
-    placeholder: "17 a 20 dígitos",
+    placeholder: t("ed.user.idPlaceholder"),
     event: "change",
     onInput: (v) => {
       S.draft = renameUserId(S.draft, S.draft.users[i].id, v.trim());
@@ -564,8 +613,8 @@ function userCard(u, i) {
   });
   const alias = textField(p("displayName"), USER_LABELS.displayName, {
     max: 40,
-    placeholder: discordName || "vacío = su nombre de Discord",
-    hint: "Si lo dejás vacío se usa su nombre de Discord.",
+    placeholder: discordName || t("ed.user.aliasPlaceholder"),
+    hint: t("ed.user.aliasHint"),
     onInput: (v, input) => {
       S.draft.users[i].displayName = v;
       syncAliasInputs(i, input);
@@ -573,17 +622,17 @@ function userCard(u, i) {
   });
   return h("div", { class: "card user" },
     h("div", { class: "row-between" },
-      h("h3", { class: "user-title", "data-user-title": i, text: u.displayName || discordName || "Persona sin alias" }),
-      h("button", { type: "button", class: "danger small", onclick: () => confirm(`¿Quitar a ${u.displayName || u.id || "esta persona"}?`) && change((d) => removeUser(d, u.id)), text: "Quitar" }),
+      h("h3", { class: "user-title", "data-user-title": i, text: u.displayName || discordName || t("ed.user.noAlias") }),
+      h("button", { type: "button", class: "danger small", onclick: () => confirm(t("ed.user.confirmRemove", { name: u.displayName || u.id || t("ed.thisPerson") })) && change((d) => removeUser(d, u.id)), text: t("ed.user.remove") }),
     ),
     h("div", { class: "user-head" },
       idField,
       alias,
-      textField(p("role"), "Rol (opcional)", { max: 24, placeholder: "ej. Host" }),
-      colorField(p("roleColor"), "Color del rol", { allowEmpty: true }),
+      textField(p("role"), t("ed.user.roleOptional"), { max: 24, placeholder: t("ed.user.rolePlaceholder") }),
+      colorField(p("roleColor"), USER_LABELS.roleColor, { allowEmpty: true }),
     ),
-    h("div", { class: "slots" }, IMAGE_SLOTS.map(([s, l]) => imageSlot(i, s, l))),
-    h("small", { class: "hint", text: "Solo «Callado» es necesaria: si falta otra, se usa esa. Sin ninguna, se usa su avatar de Discord." }),
+    h("div", { class: "slots" }, IMAGE_SLOTS.map((s) => imageSlot(i, s, t(`sim.${s}`)))),
+    h("small", { class: "hint", text: t("ed.user.imagesHint", { idle: t("sim.idle") }) }),
   );
 }
 
@@ -592,7 +641,7 @@ function onAliasInput(m, input) {
   S.draft = setAlias(S.draft, m, input.value);
   const idx = S.draft.users.findIndex((u) => u.id === m.id);
   if (idx < 0) {
-    if (input.value.trim() && S.draft.users.length >= 50) toast("Llegaste al máximo de 50 personas.", "warn");
+    if (input.value.trim() && S.draft.users.length >= 50) toast(t("ed.user.maxPeople"), "warn");
     return;
   }
   if (!had) {
@@ -611,23 +660,23 @@ function onAliasInput(m, input) {
 function callPanel() {
   const members = callMembers(S.voice, S.draft);
   return h("div", { class: "card picker", id: "call-panel" },
-    h("h2", { text: "En la llamada ahora" }),
+    h("h2", { text: t("ed.call.title") }),
     !S.voice?.channel
-      ? h("p", { class: "empty", text: "No estás en un canal de voz. Entrá a uno en Discord (con Discord conectado) y acá vas a ver a quienes estén, para ponerles un alias." })
+      ? h("p", { class: "empty", text: t("ed.call.none") })
       : h("div", {},
-          h("p", { class: "hint", text: `Canal «${S.voice.channel.name}». Escribí un alias para cambiar cómo aparece cada persona en pantalla. Vacío = su nombre de Discord.` }),
+          h("p", { class: "hint", text: t("ed.call.hint", { name: S.voice.channel.name }) }),
           members.length
             ? h("ul", { class: "members live" }, members.map((m) => {
-                const input = h("input", { type: "text", maxlength: 40, value: m.alias, placeholder: m.discordName || "alias", "data-alias": m.id, spellcheck: "false", "aria-label": `Alias de ${m.discordName || m.id}` });
+                const input = h("input", { type: "text", maxlength: 40, value: m.alias, placeholder: m.discordName || t("ed.call.aliasPlaceholder"), "data-alias": m.id, spellcheck: "false", "aria-label": t("ed.call.aliasAria", { name: m.discordName || m.id }) });
                 input.addEventListener("input", () => onAliasInput(m, input));
                 return h("li", {},
                   avatarImg(m.avatarUrl),
-                  h("span", { class: "member-name" }, h("strong", { text: m.discordName || m.id }), m.speaking ? h("span", { class: "badge tone-ok", text: "hablando" }) : null),
+                  h("span", { class: "member-name" }, h("strong", { text: m.discordName || m.id }), m.speaking ? h("span", { class: "badge tone-ok", text: t("ed.badge.talking") }) : null),
                   input,
-                  h("span", { class: `badge ${m.configured ? "tone-ok" : "tone-warn"}`, text: m.configured ? "en tu lista" : "nueva" }),
+                  h("span", { class: `badge ${m.configured ? "tone-ok" : "tone-warn"}`, text: m.configured ? t("ed.call.onList") : t("ed.call.new") }),
                 );
               }))
-            : h("p", { class: "empty", text: "El canal está vacío." }),
+            : h("p", { class: "empty", text: t("ed.call.empty") }),
         ),
   );
 }
@@ -644,38 +693,38 @@ function library() {
         toast(err.message, "bad");
       }
     }
-    if (ok) toast(ok === 1 ? "Imagen subida." : `${ok} imágenes subidas.`);
+    if (ok) toast(ok === 1 ? t("ed.lib.uploadedOne") : t("ed.lib.uploadedMany", { n: ok }));
     render();
   };
   file.addEventListener("change", () => uploadMany([...file.files]));
   const del = async (name) => {
     const local = assetUsers(S.draft, name);
     if (local.length) {
-      S.libraryMsg = `«${name}» está en uso por ${local.join(", ")}.`;
+      S.libraryMsg = { key: "ed.lib.inUse", params: { name, users: local.join(", ") } };
       return render();
     }
     const r = await api(`/api/assets/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => null);
-    if (r?.status === 409) S.libraryMsg = `«${name}» está en uso por ${(r.data?.users ?? []).join(", ")} (en la config guardada).`;
-    else if (r?.ok) S.libraryMsg = `Borrada «${name}».`;
-    else S.libraryMsg = `No se pudo borrar «${name}».`;
+    if (r?.status === 409) S.libraryMsg = { key: "ed.lib.inUseSaved", params: { name, users: (r.data?.users ?? []).join(", ") } };
+    else if (r?.ok) S.libraryMsg = { key: "ed.lib.deleted", params: { name } };
+    else S.libraryMsg = { key: "ed.lib.deleteFailed", params: { name } };
     await loadAssets();
     render();
   };
   const box = h("div", { class: "card library" },
     h("div", { class: "row-between" },
-      h("h2", { text: `Imágenes subidas (${S.assets.length})` }),
-      h("button", { type: "button", onclick: () => file.click(), text: "Subir imágenes…" }),
+      h("h2", { text: t("ed.lib.title", { n: S.assets.length }) }),
+      h("button", { type: "button", onclick: () => file.click(), text: t("ed.lib.upload") }),
       file,
     ),
-    h("p", { class: "hint", text: "PNG, GIF (también animados), WebP o JPG, hasta 10 MB. Arrastrá archivos acá o directo a cada casillero." }),
-    S.libraryMsg ? h("p", { class: "msg tone-warn", role: "status", text: S.libraryMsg }) : null,
+    h("p", { class: "hint", text: t("ed.lib.hint") }),
+    S.libraryMsg ? h("p", { class: "msg tone-warn", role: "status", text: t(S.libraryMsg.key, S.libraryMsg.params) }) : null,
     S.assets.length
       ? h("div", { class: "assets" }, S.assets.map((a) => h("figure", { class: "asset" },
           h("img", { src: assetUrl(a.name), alt: "", loading: "lazy" }),
           h("figcaption", {}, h("span", { class: "asset-name", text: a.name, title: a.name }), h("span", { class: "hint", text: fmtSize(a.size) })),
-          h("button", { type: "button", class: "danger small", onclick: () => del(a.name), "aria-label": `Borrar ${a.name}`, text: "Borrar" }),
+          h("button", { type: "button", class: "danger small", onclick: () => del(a.name), "aria-label": t("ed.lib.deleteAria", { name: a.name }), text: t("ed.delete") }),
         )))
-      : h("p", { class: "empty", text: "Todavía no subiste imágenes. Sin imágenes se usa el avatar de Discord de cada persona." }),
+      : h("p", { class: "empty", text: t("ed.lib.empty") }),
   );
   dropTarget(box, uploadMany);
   return box;
@@ -689,17 +738,17 @@ function renderUsers() {
   return [
     h("div", { class: "card" },
       h("div", { class: "row-between", "data-path": "users" },
-        h("h2", { text: `Usuarios (${S.draft.users.length})` }),
-        h("button", { type: "button", onclick: addUser, text: "+ Agregar persona" }),
+        h("h2", { text: t("ed.users.title", { n: S.draft.users.length }) }),
+        h("button", { type: "button", onclick: addUser, text: t("ed.users.add") }),
       ),
-      h("p", { class: "hint", text: "Acá elegís cómo aparece cada persona: su alias y sus imágenes. Lo más fácil: ponele un alias a quien esté en la llamada." }),
+      h("p", { class: "hint", text: t("ed.users.hint") }),
       h("details", { class: "detail" },
-        h("summary", { text: "¿De dónde saco el ID de Discord?" }),
-        h("p", { class: "hint", text: "En Discord: Ajustes de usuario › Avanzado › activá «Modo desarrollador». Después hacé clic derecho sobre la persona › «Copiar ID de usuario». Si está en tu llamada no hace falta: escribile un alias abajo y se agrega sola." }),
+        h("summary", { text: t("ed.users.idHelpTitle") }),
+        h("p", { class: "hint", text: t("ed.users.idHelp") }),
       ),
     ),
     callPanel(),
-    S.draft.users.length ? S.draft.users.map(userCard) : h("p", { class: "empty card", text: "Todavía no agregaste a nadie. Ponele un alias a quien esté en la llamada o tocá «+ Agregar persona»." }),
+    S.draft.users.length ? S.draft.users.map(userCard) : h("p", { class: "empty card", text: t("ed.users.empty") }),
     library(),
   ];
 }
@@ -711,24 +760,24 @@ function presetUsers() {
   const i = S.presetIdx;
   const users = new Map(S.draft.users.map((u) => [u.id, u]));
   const available = S.draft.users.filter((u) => u.id && !pr.users.includes(u.id));
-  const add = h("select", { "aria-label": "Agregar persona a este preset" },
-    h("option", { value: "", text: "+ Agregar persona…" }),
+  const add = h("select", { "aria-label": t("ed.pu.addAria") },
+    h("option", { value: "", text: t("ed.pu.add") }),
     available.map((u) => h("option", { value: u.id, text: u.displayName || liveName(u.id) || u.id })),
   );
   add.addEventListener("change", () => add.value && change((d) => void d.presets[i].users.push(add.value)));
   const hint = pr.mode === "slots"
-    ? "Un lugar fijo por persona, en este orden. Si la lista está vacía, aparecen todas tus personas."
-    : "Aparece quien esté en la llamada. Las de esta lista van primero, en este orden (opcional).";
+    ? t("ed.pu.hintSlots")
+    : t("ed.pu.hintReactive");
   const nameOf = (id) => users.get(id)?.displayName || liveName(id) || id;
   return h("div", { class: "field wide", "data-path": `presets[${i}].users` },
-    h("label", { text: "Personas y orden" }),
+    h("label", { text: t("ed.pu.label") }),
     pr.users.length
       ? h("ol", { class: "order" }, pr.users.map((id, j) => h("li", {},
           h("span", { text: nameOf(id) }),
           h("span", { class: "spacer" }),
-          h("button", { type: "button", class: "icon", "aria-label": `Subir a ${nameOf(id)}`, title: "Subir", disabled: j === 0, onclick: () => change((d) => void (d.presets[i].users = moveItem(d.presets[i].users, j, -1))), text: "▲" }),
-          h("button", { type: "button", class: "icon", "aria-label": `Bajar a ${nameOf(id)}`, title: "Bajar", disabled: j === pr.users.length - 1, onclick: () => change((d) => void (d.presets[i].users = moveItem(d.presets[i].users, j, 1))), text: "▼" }),
-          h("button", { type: "button", class: "icon danger", "aria-label": `Sacar a ${nameOf(id)} del preset`, title: "Sacar del preset", onclick: () => change((d) => void d.presets[i].users.splice(j, 1)), text: "✕" }),
+          h("button", { type: "button", class: "icon", "aria-label": t("ed.pu.upAria", { name: nameOf(id) }), title: t("ed.pu.up"), disabled: j === 0, onclick: () => change((d) => void (d.presets[i].users = moveItem(d.presets[i].users, j, -1))), text: "▲" }),
+          h("button", { type: "button", class: "icon", "aria-label": t("ed.pu.downAria", { name: nameOf(id) }), title: t("ed.pu.down"), disabled: j === pr.users.length - 1, onclick: () => change((d) => void (d.presets[i].users = moveItem(d.presets[i].users, j, 1))), text: "▼" }),
+          h("button", { type: "button", class: "icon danger", "aria-label": t("ed.pu.removeAria", { name: nameOf(id) }), title: t("ed.pu.remove"), onclick: () => change((d) => void d.presets[i].users.splice(j, 1)), text: "✕" }),
         )))
       : null,
     available.length ? add : null,
@@ -736,16 +785,14 @@ function presetUsers() {
   );
 }
 
-const POS_X = { left: "a la izquierda", center: "al centro", right: "a la derecha" };
-const POS_Y = { top: "Arriba", center: "En el medio", bottom: "Abajo" };
-const posLabel = (x, y) => (x === "center" && y === "center" ? "En el centro" : `${POS_Y[y]} ${POS_X[x]}`);
+const posLabel = (x, y) => t(`pos.${y}.${x}`);
 
 /** 3x3 position picker for alignX/alignY (a radio group with arrow-key navigation). */
 function positionPicker(i) {
   const l = preset().layout;
   const X = ["left", "center", "right"];
   const Y = ["top", "center", "bottom"];
-  const caption = h("small", { class: "hint", id: "pos-hint", text: `${posLabel(l.alignX, l.alignY)}. Para correrlo unos píxeles: Ajustes avanzados.` });
+  const caption = h("small", { class: "hint", id: "pos-hint", text: t("ed.pos.caption", { pos: posLabel(l.alignX, l.alignY) }) });
   const cells = [];
   const select = (x, y, focus) => {
     S.draft.presets[i].layout.alignX = x;
@@ -757,7 +804,7 @@ function positionPicker(i) {
       c.classList.toggle("active", on);
       if (on && focus) c.focus();
     }
-    caption.textContent = `${posLabel(x, y)}. Para correrlo unos píxeles: Ajustes avanzados.`;
+    caption.textContent = t("ed.pos.caption", { pos: posLabel(x, y) });
     edited(`presets[${i}].layout.alignX`);
     edited(`presets[${i}].layout.alignY`);
   };
@@ -782,7 +829,7 @@ function positionPicker(i) {
     }
   }
   return h("div", { class: "field", "data-path": `presets[${i}].layout.alignX` },
-    h("span", { class: "field-label", id: "pos-label", text: "Posición en pantalla" }),
+    h("span", { class: "field-label", id: "pos-label", text: t("ed.pos.label") }),
     h("div", { class: "pos-grid", role: "radiogroup", "aria-labelledby": "pos-label", "aria-describedby": "pos-hint", "data-path": `presets[${i}].layout.alignY` }, cells),
     caption,
   );
@@ -793,7 +840,7 @@ function urlRow(label, url) {
   return h("div", { class: "url-row" },
     h("label", { class: "url-label", for: id, text: label }),
     h("input", { type: "text", id, readonly: true, value: url, onfocus: (e) => e.target.select() }),
-    h("button", { type: "button", class: "small", onclick: () => copyText(url), "aria-label": `Copiar ${label}`, text: "Copiar" }),
+    h("button", { type: "button", class: "small", onclick: () => copyText(url), "aria-label": t("ed.copyAria", { label }), text: t("ed.copy") }),
   );
 }
 
@@ -802,32 +849,32 @@ async function copyForObs(pr) {
   const saved = S.base.presets.some((p) => p.id === pr.id);
   await copyText(o.url, null);
   setFlag("obsCopied", true);
-  if (saved) toast(`Dirección copiada ✔ En OBS poné Ancho ${o.width} y Alto ${o.height}.`);
-  else toast(`Dirección copiada, pero tocá «Guardar cambios» para que funcione en OBS (Ancho ${o.width}, Alto ${o.height}).`, "warn");
+  if (saved) toast(t("ed.obs.copiedSaved", { width: o.width, height: o.height }));
+  else toast(t("ed.obs.copiedUnsaved", { width: o.width, height: o.height }), "warn");
 }
 
 function obsCard(pr, saved) {
   const o = obsSetup(pr, location.origin);
   return h("div", { class: "card obs", id: "preset-urls" },
-    h("h2", { text: "Agregar a OBS" }),
+    h("h2", { text: t("ed.obs.title") }),
     h("div", { class: "obs-row" },
-      h("button", { type: "button", class: "primary big", id: "copy-obs", onclick: () => copyForObs(preset()), text: "Copiar para OBS" }),
-      h("div", { class: "obs-size", "aria-label": `Tamaño para OBS: ancho ${o.width}, alto ${o.height}` },
-        h("span", { class: "obs-dim" }, h("small", { text: "Ancho" }), h("strong", { text: o.width })),
-        h("span", { class: "obs-dim" }, h("small", { text: "Alto" }), h("strong", { text: o.height })),
+      h("button", { type: "button", class: "primary big", id: "copy-obs", onclick: () => copyForObs(preset()), text: t("ed.obs.copy") }),
+      h("div", { class: "obs-size", "aria-label": t("ed.obs.sizeAria", { width: o.width, height: o.height }) },
+        h("span", { class: "obs-dim" }, h("small", { text: t("ed.obs.width") }), h("strong", { text: o.width })),
+        h("span", { class: "obs-dim" }, h("small", { text: t("ed.obs.height") }), h("strong", { text: o.height })),
       ),
     ),
     h("ol", { class: "steps numbered compact" },
-      h("li", {}, "En OBS, abajo en ", h("strong", { text: "Fuentes" }), ", tocá ", h("strong", { text: "+" }), " y elegí ", h("strong", { text: "Navegador" }), "."),
-      h("li", {}, "Pegá la dirección en ", h("strong", { text: "URL" }), "."),
-      h("li", {}, `Poné Ancho ${o.width} y Alto ${o.height} (el lienzo «${canvasLabel(pr.canvas)}») y aceptá.`),
+      h("li", {}, parts("ed.obs.step1", { sources: h("strong", { text: t("ed.obs.sources") }), plus: h("strong", { text: "+" }), browser: h("strong", { text: t("ed.obs.browser") }) })),
+      h("li", {}, parts("ed.obs.step2", { url: h("strong", { text: "URL" }) })),
+      h("li", {}, t("ed.obs.step3", { width: o.width, height: o.height, canvas: canvasLabel(pr.canvas) })),
     ),
-    saved ? null : h("p", { class: "msg tone-warn", text: "Este preset todavía no está guardado: tocá «Guardar cambios» para que la dirección funcione en OBS." }),
+    saved ? null : h("p", { class: "msg tone-warn", text: t("ed.obs.unsaved") }),
     h("details", { class: "detail" },
-      h("summary", { text: "Detalle" }),
+      h("summary", { text: t("ed.obs.detail") }),
       urlRow("URL", o.url),
-      urlRow("Demo", `${o.url}?demo=1`),
-      h("small", { class: "hint", text: "«Demo» muestra personas de ejemplo para acomodar el overlay en OBS sin estar en una llamada." }),
+      urlRow(t("ed.obs.demo"), `${o.url}?demo=1`),
+      h("small", { class: "hint", text: t("ed.obs.demoHint") }),
     ),
   );
 }
@@ -851,7 +898,7 @@ function renderPresets() {
       $("#preset-urls").replaceWith(obsCard(S.draft.presets[i], false));
     }
     const chip = document.querySelector(`[data-preset="${i}"] .chip-name`);
-    if (chip) chip.textContent = v || "(sin nombre)";
+    if (chip) chip.textContent = v || t("ed.presets.noName");
     fillPresetSelect();
   };
   const onCanvas = () => {
@@ -866,35 +913,35 @@ function renderPresets() {
   return [
     h("div", { class: "card" },
       h("div", { class: "row-between", "data-path": "presets" },
-        h("h2", { text: "Presets" }),
+        h("h2", { text: t("ed.presets.title") }),
         h("div", { class: "actions" },
-          h("button", { type: "button", class: "primary", onclick: openGallery, disabled: S.draft.presets.length >= LIMIT_PRESETS, text: "+ Nuevo" }),
-          h("button", { type: "button", onclick: () => change((d) => { S.presetIdx = i + 1; return duplicatePreset(d, i); }), disabled: S.draft.presets.length >= LIMIT_PRESETS, text: "Duplicar" }),
-          h("button", { type: "button", class: "danger", disabled: S.draft.presets.length <= 1, onclick: () => confirm(`¿Borrar el preset «${pr.name}»?`) && change((d) => deletePreset(d, i)), text: "Borrar" }),
+          h("button", { type: "button", class: "primary", onclick: openGallery, disabled: S.draft.presets.length >= LIMIT_PRESETS, text: t("ed.presets.new") }),
+          h("button", { type: "button", onclick: () => change((d) => { S.presetIdx = i + 1; return duplicatePreset(d, i); }), disabled: S.draft.presets.length >= LIMIT_PRESETS, text: t("ed.presets.duplicate") }),
+          h("button", { type: "button", class: "danger", disabled: S.draft.presets.length <= 1, onclick: () => confirm(t("ed.presets.confirmDelete", { name: pr.name })) && change((d) => deletePreset(d, i)), text: t("ed.delete") }),
         ),
       ),
-      h("p", { class: "hint", text: S.draft.presets.length >= LIMIT_PRESETS ? `Llegaste al máximo de ${LIMIT_PRESETS} presets.` : "Cada preset es un overlay distinto con su propia dirección para OBS." }),
+      h("p", { class: "hint", text: S.draft.presets.length >= LIMIT_PRESETS ? t("ed.presets.max", { max: LIMIT_PRESETS }) : t("ed.presets.hint") }),
       h("div", { class: "chips" }, S.draft.presets.map((p, k) => h("button", {
         type: "button", class: `chip${k === i ? " active" : ""}`, "data-preset": k, "aria-pressed": String(k === i),
         onclick: () => { S.presetIdx = k; S.canvasOverride = null; render(); },
-      }, h("span", { class: "chip-name", text: p.name || "(sin nombre)" }), errorCount(k) ? h("span", { class: "badge tone-bad", text: errorCount(k) }) : null))),
+      }, h("span", { class: "chip-name", text: p.name || t("ed.presets.noName") }), errorCount(k) ? h("span", { class: "badge tone-bad", text: errorCount(k) }) : null))),
     ),
     pr.mode === "slots" && !S.draft.users.length
-      ? h("div", { class: "warn-box" }, "Este preset tiene un lugar fijo por persona, pero todavía no agregaste a nadie. ", h("a", { href: "#users", text: "Agregar personas en Usuarios" }), ".")
+      ? h("div", { class: "warn-box" }, parts("ed.presets.slotsNoUsers", { link: h("a", { href: "#users", text: t("ed.presets.addPeople") }) }))
       : null,
     h("div", { class: "card" },
-      h("h2", { text: "Lo básico" }),
+      h("h2", { text: t("ed.presets.basics") }),
       h("div", { class: "grid2" },
         textField(`presets[${i}].name`, PRESET_LABELS.name, { max: 40, onInput: onName }),
         selectField(`presets[${i}].mode`, PRESET_LABELS.mode, [
-          { value: "reactive", label: "Quien esté en la llamada" },
-          { value: "slots", label: "Lugar fijo por persona" },
-        ], { onChange: () => change(() => null), hint: pr.mode === "slots" ? "Cada persona tiene su lugar; si no está, dice OFFLINE." : "Aparece quien entra a la llamada y desaparece quien sale." }),
-        selectField(`presets[${i}].canvas`, PRESET_LABELS.canvas, CANVASES, { onChange: onCanvas, hint: "Igual al de OBS: Ajustes › Video › Resolución base (lienzo)." }),
+          { value: "reactive", label: t("ed.mode.reactive") },
+          { value: "slots", label: t("ed.mode.slots") },
+        ], { onChange: () => change(() => null), hint: pr.mode === "slots" ? t("ed.mode.hintSlots") : t("ed.mode.hintReactive") }),
+        selectField(`presets[${i}].canvas`, PRESET_LABELS.canvas, CANVASES, { onChange: onCanvas, hint: t("ed.canvasHint") }),
         themeField(i),
         positionPicker(i),
         h("div", { class: "stack" },
-          numberField(`presets[${i}].layout.size`, sizeSpec, { label: "Tamaño de cada imagen (px)" }),
+          numberField(`presets[${i}].layout.size`, sizeSpec, { label: t("ed.imageSize") }),
           schemaField("style", "talkAnimation"),
           schemaField("style", "showNames"),
         ),
@@ -903,19 +950,19 @@ function renderPresets() {
     ),
     obsCard(pr, saved),
     h("details", { class: "card advanced", open: S.advancedOpen || advErrors, ontoggle: (e) => (S.advancedOpen = e.target.open) },
-      h("summary", { text: "Ajustes avanzados" }),
-      h("p", { class: "hint", text: "Forma, colores, márgenes, textos y más. No hace falta tocar nada de esto." }),
-      h("h3", { text: "Disposición" }),
+      h("summary", { text: t("ed.advanced") }),
+      h("p", { class: "hint", text: t("ed.advancedHint") }),
+      h("h3", { text: t("ed.layoutTitle") }),
       h("div", { class: "grid2", "data-path": `presets[${i}].layout` },
         pick("layout").map((k) => schemaField("layout", k)),
         pr.mode === "reactive" ? boolField(`presets[${i}].showUnlisted`, PRESET_LABELS.showUnlisted) : null,
         h("div", { class: "field", "data-path": `presets[${i}].id` },
           h("span", { class: "field-label", text: PRESET_LABELS.id }),
           h("code", { id: "preset-id", class: "id", text: pr.id }),
-          h("small", { class: "hint", text: saved ? "Fijo una vez guardado, para no romper la dirección en OBS." : "Se arma solo a partir del nombre." }),
+          h("small", { class: "hint", text: saved ? t("ed.idLocked") : t("ed.idAuto") }),
         ),
       ),
-      h("h3", { text: "Estilo" }),
+      h("h3", { text: t("ed.styleTitle") }),
       h("div", { class: "grid2", "data-path": `presets[${i}].style` }, pick("style").map((k) => schemaField("style", k))),
     ),
   ];
@@ -924,17 +971,17 @@ function renderPresets() {
 /** Theme select plus a small colour sample and a one-line description of the chosen theme. */
 function themeField(i) {
   const path = `presets[${i}].theme`;
-  const theme = (v) => THEMES.find((t) => t.value === v) ?? THEMES[0];
-  const sel = h("select", {}, THEMES.map((t) => h("option", { value: t.value, text: t.label })));
+  const theme = (v) => THEMES.find((x) => x.value === v) ?? THEMES[0];
+  const sel = h("select", {}, THEMES.map((x) => h("option", { value: x.value, text: x.label })));
   sel.value = getAt(S.draft, path);
   const swatch = h("span", { class: "theme-swatch", "aria-hidden": "true" });
   const paint = () => {
-    const t = theme(sel.value);
-    swatch.className = `theme-swatch sw-${t.value}`;
-    swatch.style.setProperty("--sw-bg", t.swatch[0]);
-    swatch.style.setProperty("--sw-fg", t.swatch[1]);
+    const th = theme(sel.value);
+    swatch.className = `theme-swatch sw-${th.value}`;
+    swatch.style.setProperty("--sw-bg", th.swatch[0]);
+    swatch.style.setProperty("--sw-fg", th.swatch[1]);
     const hint = document.getElementById(`${sel.id}-hint`);
-    if (hint) hint.textContent = t.description;
+    if (hint) hint.textContent = th.description;
   };
   sel.addEventListener("change", () => {
     setAt(S.draft, path, sel.value);
@@ -970,7 +1017,7 @@ function schematic(tpl) {
 
 function openGallery() {
   if (S.draft.presets.length >= LIMIT_PRESETS) {
-    toast(`Llegaste al máximo de ${LIMIT_PRESETS} presets. Borrá uno para crear otro.`, "warn");
+    toast(t("ed.gallery.limit", { max: LIMIT_PRESETS }), "warn");
     return;
   }
   const current = preset()?.canvas;
@@ -986,12 +1033,12 @@ function renderGallery() {
   dialog.replaceChildren(
     h("form", { method: "dialog", class: "gallery" },
       h("div", { class: "row-between" },
-        h("h2", { id: "gallery-title", text: "Elegí una plantilla" }),
-        h("button", { type: "submit", class: "small", value: "cancel", text: "Cerrar" }),
+        h("h2", { id: "gallery-title", text: t("ed.gallery.title") }),
+        h("button", { type: "submit", class: "small", value: "cancel", text: t("ed.gallery.close") }),
       ),
-      h("p", { class: "hint", text: "Se crea un preset nuevo con esa forma. Después podés cambiar lo que quieras." }),
+      h("p", { class: "hint", text: t("ed.gallery.hint") }),
       h("fieldset", { class: "canvas-pick" },
-        h("legend", { text: "Tu lienzo de OBS" }),
+        h("legend", { text: t("ed.gallery.canvas") }),
         landscape.map((c) => h("label", {},
           h("input", { type: "radio", name: "g-canvas", value: c.value, checked: c.value === S.galleryCanvas, onchange: () => {
             S.galleryCanvas = c.value;
@@ -1002,7 +1049,7 @@ function renderGallery() {
           } }),
           " ", c.label,
         )),
-        h("small", { class: "hint", text: "¿No sabés cuál es? En OBS: Ajustes › Video › Resolución base (lienzo). Los tamaños se ajustan solos." }),
+        h("small", { class: "hint", text: t("ed.gallery.canvasHint") }),
       ),
       h("div", { class: "templates" }, TEMPLATES.map((tpl) => h("button", { type: "button", class: "template", onclick: () => pickTemplate(tpl) },
         schematic(tpl),
@@ -1016,16 +1063,16 @@ function renderGallery() {
 
 function pickTemplate(tpl) {
   const r = presetFromTemplate(S.draft, tpl["key"], { canvas: S.galleryCanvas });
-  if (r.error === "limit") return toast(`Llegaste al máximo de ${LIMIT_PRESETS} presets. Borrá uno para crear otro.`, "warn");
-  if (r.error) return toast("No se encontró esa plantilla.", "bad");
+  if (r.error === "limit") return toast(t("ed.gallery.limit", { max: LIMIT_PRESETS }), "warn");
+  if (r.error) return toast(t("ed.gallery.notFound"), "bad");
   dialog.close();
   S.draft = r.config;
   S.presetIdx = r.index;
   S.canvasOverride = null;
   setFlag("templatePicked", true);
   goTo("presets");
-  if (r.needsUsers) toast(`Preset «${tpl.name}» creado. Tiene lugares fijos: agregá personas en «Usuarios».`, "warn");
-  else toast(`Preset «${tpl.name}» creado. Tocá «Guardar cambios» para usarlo en OBS.`);
+  if (r.needsUsers) toast(t("ed.gallery.createdSlots", { name: tpl.name }), "warn");
+  else toast(t("ed.gallery.created", { name: tpl.name }));
   requestAnimationFrame(() => $(`[data-path="presets[${r.index}].name"] input`)?.focus());
 }
 
@@ -1074,7 +1121,8 @@ function postPreview() {
   const v = previewVoice();
   frame.contentWindow.postMessage({ type: "preview", presetId: "preview", config, voice: v }, location.origin);
   const cv = effectiveCanvas();
-  $("#pv-caption").textContent = `${preset().name || preset().id} · ${canvasLabel(cv)}${S.canvasOverride ? " (solo en la vista previa)" : ""} · ${S.sim.source === "live" ? (S.voice?.channel ? `llamada real: ${v.members.length} en ${S.voice.channel.name}` : "llamada real: sin canal") : "simulación"}`;
+  const source = S.sim.source === "live" ? (S.voice?.channel ? t("ed.pv.live", { n: v.members.length, channel: S.voice.channel.name }) : t("ed.pv.liveNone")) : t("ed.pv.sim");
+  $("#pv-caption").textContent = `${preset().name || preset().id} · ${canvasLabel(cv)}${S.canvasOverride ? t("ed.pv.previewOnly") : ""} · ${source}`;
 }
 
 function schedulePreview() {
@@ -1113,7 +1161,8 @@ function layoutPreview() {
 new ResizeObserver(layoutPreview).observe(stage.parentElement);
 window.addEventListener("resize", layoutPreview);
 
-$("#pv-canvas").replaceChildren(...CANVASES.map((c) => h("option", { value: c.value, text: c.label })));
+applyLanguage(initialLanguage());
+document.querySelectorAll("#lang-switch button").forEach((b) => b.addEventListener("click", () => switchLanguage(b.dataset.lang)));
 $("#pv-canvas").addEventListener("change", (e) => {
   S.canvasOverride = e.target.value === preset()?.canvas ? null : e.target.value;
   layoutPreview();
@@ -1136,7 +1185,7 @@ document.querySelectorAll('input[name="pv-source"]').forEach((r) =>
 
 function fillPresetSelect() {
   const sel = $("#pv-preset");
-  sel.replaceChildren(...S.draft.presets.map((p, k) => h("option", { value: k, text: p.name || p.id || `Preset ${k + 1}` })));
+  sel.replaceChildren(...S.draft.presets.map((p, k) => h("option", { value: k, text: p.name || p.id || t("ed.pv.presetN", { n: k + 1 }) })));
   sel.value = String(S.presetIdx);
 }
 
@@ -1162,17 +1211,17 @@ function renderSim() {
     clearInterval(rotateTimer);
     rotateTimer = null;
     const v = S.voice;
-    body.replaceChildren(h("p", { class: "hint", text: v?.channel ? `Mostrando la llamada real: ${v.members.length} en «${v.channel.name}».` : "No hay llamada: con «Quien esté en la llamada» la vista previa queda vacía." }));
+    body.replaceChildren(h("p", { class: "hint", text: v?.channel ? t("ed.sim.live", { n: v.members.length, name: v.channel.name }) : t("ed.sim.liveNone") }));
     return;
   }
   if (S.sim.mode === "rotate" && !rotateTimer) setSimMode("rotate");
   const modeBtn = (mode, label, title) => h("button", { type: "button", class: `small${S.sim.mode === mode ? " active" : ""}`, "aria-pressed": String(S.sim.mode === mode), title, onclick: () => setSimMode(mode), text: label });
   const rows = S.draft.users.map((u) => {
     const cur = S.sim.states[u.id] ?? "idle";
-    const name = u.displayName || liveName(u.id) || u.id || "(sin ID)";
+    const name = u.displayName || liveName(u.id) || u.id || t("ed.sim.noId");
     return h("div", { class: "sim-row" },
       h("span", { class: "sim-name", text: name }),
-      h("div", { class: "seg small", role: "group", "aria-label": `Estado de ${name}` }, SIM_STATES.map((s) => h("button", {
+      h("div", { class: "seg small", role: "group", "aria-label": t("ed.sim.stateAria", { name }) }, SIM_STATES.map((s) => h("button", {
         type: "button", class: S.sim.mode === "manual" && cur === s.value ? "active" : "", "aria-pressed": String(S.sim.mode === "manual" && cur === s.value), text: s.label,
         onclick: () => {
           S.sim.states[u.id] = s.value;
@@ -1183,12 +1232,12 @@ function renderSim() {
   });
   body.replaceChildren(
     h("div", { class: "actions" },
-      modeBtn("all", "Todos hablando", "Todas las personas (o invitados) hablando a la vez"),
-      modeBtn("rotate", "Rotar", "Cambia quién habla cada 1,4 s"),
-      modeBtn("static", "Estados", "Uno hablando, uno callado, uno muteado y uno sordo"),
-      modeBtn("manual", "Manual", "Usá los botones de cada persona"),
+      modeBtn("all", t("ed.sim.all"), t("ed.sim.allTitle")),
+      modeBtn("rotate", t("ed.sim.rotate"), t("ed.sim.rotateTitle")),
+      modeBtn("static", t("ed.sim.static"), t("ed.sim.staticTitle")),
+      modeBtn("manual", t("ed.sim.manual"), t("ed.sim.manualTitle")),
     ),
-    rows.length ? h("div", { class: "sim-rows" }, rows) : h("p", { class: "hint", text: "Agregá personas para simular cada una; mientras tanto usá Rotar o Estados (con invitados de ejemplo)." }),
+    rows.length ? h("div", { class: "sim-rows" }, rows) : h("p", { class: "hint", text: t("ed.sim.empty") }),
   );
 }
 
@@ -1235,7 +1284,7 @@ function setTab(tab) {
 window.addEventListener("hashchange", () => setTab(location.hash.slice(1)));
 
 $("#save").addEventListener("click", save);
-$("#discard").addEventListener("click", () => (!dirty() || confirm("¿Descartar los cambios sin guardar?")) && discard());
+$("#discard").addEventListener("click", () => (!dirty() || confirm(t("ed.confirmDiscard"))) && discard());
 $("#steps-toggle").addEventListener("click", () => setFlag("hidden", !S.flags.hidden));
 window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e["key"].toLowerCase() === "s") {

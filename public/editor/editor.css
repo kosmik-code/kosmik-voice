@@ -57,7 +57,14 @@ h3 { font-size: 13px; color: var(--k-lamp); text-transform: uppercase; }
   font-size: 11px; line-height: 16px; text-align: center; background: var(--k-live); color: var(--k-cream);
 }
 .save-box { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+/* Keep top-bar controls on one line (longer Spanish labels); the status pill shrinks and ellipsizes instead. */
+.bar button, .bar .dirty { white-space: nowrap; flex: none; }
+.bar #conn { flex: 0 1 auto; min-width: 0; }
+/* The page column must not grow with the top bar's content, or the whole editor scrolls sideways. */
+body { grid-template-columns: minmax(0, 1fr); }
 .dirty { font: 700 12px var(--k-mono); color: var(--k-lamp); }
+.lang-switch { flex: none; flex-wrap: nowrap; }
+.lang-switch button { font-family: var(--k-mono); font-weight: 700; }
 
 .pill {
   display: inline-block; padding: 3px 10px; font: 700 12px var(--k-mono); background: var(--k-night-2);
