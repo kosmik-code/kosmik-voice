@@ -29,6 +29,27 @@ const ICON_DEAF =
 
 let state = { config: null, voice: { channel: null, members: [] }, status: null };
 const nodes = new Map();
+const THEME_COLORS = {
+  frameColor: "--c-frame", boxColor: "--c-box", nameColor: "--c-name",
+  nameBg: "--c-name-bg", nameBorder: "--c-name-border", accentColor: "--c-accent",
+};
+
+// Discord sends SPEAKING_STOP on every short pause between words. Dropping "talking" at once restarted the
+// animation and flickered the dim/glow several times per sentence, so a tile stays "talking" for a short hold.
+const TALK_HOLD_MS = 300;
+const talkSeen = new Map(); // tile id -> last time it was really talking
+let holdTimer = null;
+
+function heldState(t, now) {
+  if (t.state === "talking") {
+    talkSeen.set(t.id, now);
+    return "talking";
+  }
+  const last = talkSeen.get(t.id);
+  if (t.state === "idle" && last !== undefined && now - last < TALK_HOLD_MS) return "talking";
+  talkSeen.delete(t.id);
+  return t.state;
+}
 
 function applyPreset(p) {
   const { layout: l, style: s } = p;
@@ -40,11 +61,17 @@ function applyPreset(p) {
     "--frame-w": `${Math.max(3, Math.round(l.size / 26))}px`,
   };
   for (const [k, v] of Object.entries(vars)) stage.style.setProperty(k, String(v));
+  // Optional theme colours: unset ("") removes the variable so the theme falls back to its own colour.
+  for (const [k, v] of Object.entries(THEME_COLORS)) {
+    if (s[k]) stage.style.setProperty(v, s[k]);
+    else stage.style.removeProperty(v);
+  }
   stage.style.transform = l.offsetX || l.offsetY ? `translate(${l.offsetX}px, ${l.offsetY}px)` : "";
   stage.className = [
     `theme-${p.theme}`, `shape-${s.shape}`, `dir-${l.direction}`, `ax-${l.alignX}`, `ay-${l.alignY}`,
     s.frame ? "has-frame" : "", s.talkGlow ? "" : "no-glow",
     s.showNames ? "" : "no-names", s.showRoles ? "" : "no-roles", s.showMuteIcon ? "" : "no-mute-icon",
+    s.nameStripe === false ? "no-name-stripe" : "",
   ].filter(Boolean).join(" ");
 }
 
@@ -69,6 +96,8 @@ function render() {
   applyPreset(preset);
   const voice = demo ? demoVoice(state.config, preset, demo === "static" ? "static" : demoTick) : state.voice;
   const tiles = buildTiles(state.config, preset, voice);
+  const now = performance.now();
+  let holding = false;
   const seen = new Set();
   const ordered = tiles.map((t) => {
     seen.add(t.id);
@@ -77,10 +106,13 @@ function render() {
       el = makeNode();
       nodes.set(t.id, el);
     }
-    el.dataset.state = t.state;
+    const shown = demo === "static" ? t.state : heldState(t, now);
+    if (shown !== t.state) holding = true;
+    el.dataset.state = shown;
+    const hidden = t.hidden && shown !== "talking";
     const asset = Boolean(t.image?.startsWith("/assets/"));
     // has-asset: custom image (maybe a transparent cut-out); themes can outline its alpha instead of the box.
-    el.className = `tile anim-${preset.style.talkAnimation}${t.hidden ? " is-hidden" : ""}${asset ? " has-asset" : ""}`;
+    el.className = `tile anim-${preset.style.talkAnimation}${hidden ? " is-hidden" : ""}${asset ? " has-asset" : ""}`;
     const img = el.querySelector("img");
     if (t.image) {
       // Only touch src when it changes so GIFs keep playing and nothing flickers.
@@ -103,6 +135,9 @@ function render() {
     return el;
   });
   for (const [id, el] of nodes) if (!seen.has(id)) nodes.delete(id) && el.remove();
+  for (const id of talkSeen.keys()) if (!seen.has(id)) talkSeen.delete(id);
+  clearTimeout(holdTimer);
+  holdTimer = holding ? setTimeout(render, TALK_HOLD_MS) : null;
   // Reorder without recreating nodes.
   ordered.forEach((el, i) => {
     if (list.children[i] !== el) list.insertBefore(el, list.children[i] ?? null);

@@ -15,6 +15,8 @@ const IMAGE_SLOTS = ["idle", "talking", "muted", "deafened"];
 const LANG_KEY = "kv-editor-lang";
 // Preset fields shown up front; everything else lives under "Ajustes avanzados".
 const BASIC = { layout: ["alignX", "alignY", "size"], style: ["showNames", "talkAnimation"] };
+// Advanced style fields grouped under "Colores del tema" instead of the generic style grid.
+const THEME_COLOR_FIELDS = ["talkColor", "frameColor", "boxColor", "nameColor", "nameBg", "nameBorder", "accentColor", "nameStripe"];
 const FLAGS_KEY = "kv.firstSteps";
 
 const S = {
@@ -329,23 +331,42 @@ function textField(path, label, { max, placeholder, onInput, event = "input", hi
   return field(path, label, input, { hint });
 }
 
-function colorField(path, label, { allowEmpty } = {}) {
+/** Hex colour picker + text box. allowEmpty: "" is valid; themeDefault: "" means the theme colour, with a reset button. */
+function colorField(path, label, { allowEmpty, themeDefault, hint } = {}) {
   const value = getAt(S.draft, path) || "";
   const valid6 = (v) => /^#[0-9a-f]{6}$/i.test(v.slice(0, 7));
+  const placeholder = themeDefault ? t("ed.themeColor") : allowEmpty ? t("ed.noColor") : "#rrggbb";
   const pick = h("input", { type: "color", value: valid6(value) ? value.slice(0, 7) : "#ffcf8b", "aria-label": t("ed.colorPicker", { label }) });
-  const text = h("input", { type: "text", class: "hex", maxlength: 9, value, placeholder: allowEmpty ? t("ed.noColor") : "#rrggbb", spellcheck: "false" });
+  const text = h("input", { type: "text", class: "hex", maxlength: 9, value, placeholder, spellcheck: "false" });
+  const reset = themeDefault
+    ? h("button", { type: "button", class: "small", title: t("ed.themeColorReset"), text: t("ed.themeColorResetShort"), disabled: !value, onclick: () => {
+      text.value = "";
+      setAt(S.draft, path, "");
+      sync();
+      edited(path);
+    } })
+    : null;
+  // An empty theme colour has no real swatch: dim the picker so it does not pretend to be the theme colour.
+  const sync = () => {
+    if (!reset) return;
+    reset.disabled = !text.value.trim();
+    pick.classList.toggle("is-empty", reset.disabled);
+  };
   pick.addEventListener("input", () => {
     text.value = pick.value;
     setAt(S.draft, path, pick.value);
+    sync();
     edited(path);
   });
   text.addEventListener("input", () => {
     const v = text.value.trim();
     if (valid6(v)) pick.value = v.slice(0, 7);
     setAt(S.draft, path, v);
+    sync();
     edited(path);
   });
-  return field(path, label, h("div", { class: "color-row" }, pick, text));
+  sync();
+  return field(path, label, h("div", { class: "color-row" }, pick, text, reset), { hint });
 }
 
 function schemaField(group, name) {
@@ -355,6 +376,7 @@ function schemaField(group, name) {
   if (spec.kind === "enum") return selectField(path, spec.label, spec.options);
   if (spec.kind === "bool") return boolField(path, spec.label);
   if (spec.kind === "color") return colorField(path, spec.label);
+  if (spec.kind === "optcolor") return colorField(path, spec.label, { allowEmpty: true, themeDefault: true });
   return textField(path, spec.label, { max: spec.max });
 }
 
@@ -908,7 +930,7 @@ function renderPresets() {
     layoutPreview();
   };
   const advErrors = Object.keys(S.errors.fields).some((p) => p.startsWith(`presets[${i}].`) && isAdvanced(p));
-  const pick = (group) => Object.keys(FIELDS[group]).filter((k) => !BASIC[group].includes(k));
+  const pick = (group) => Object.keys(FIELDS[group]).filter((k) => !BASIC[group].includes(k) && !(group === "style" && THEME_COLOR_FIELDS.includes(k)));
   const sizeSpec = FIELDS.layout.size;
   return [
     h("div", { class: "card" },
@@ -964,6 +986,9 @@ function renderPresets() {
       ),
       h("h3", { text: t("ed.styleTitle") }),
       h("div", { class: "grid2", "data-path": `presets[${i}].style` }, pick("style").map((k) => schemaField("style", k))),
+      h("h3", { text: t("ed.colorsTitle") }),
+      h("p", { class: "hint", text: t("ed.colorsHint") }),
+      h("div", { class: "grid2" }, THEME_COLOR_FIELDS.map((k) => schemaField("style", k))),
     ),
   ];
 }

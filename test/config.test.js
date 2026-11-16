@@ -145,3 +145,16 @@ test("theme accepts pixel-cafe, clean, neon, comic and glass; rejects unknown", 
     assert.equal(r.errors[0].message, "must be one of pixel-cafe, clean, neon, comic, glass");
   }
 });
+
+test("theme colours are optional hex colours and nameStripe defaults on", () => {
+  const def = validateConfig(defaultConfig()).value.presets[0].style;
+  for (const k of ["frameColor", "boxColor", "nameColor", "nameBg", "nameBorder", "accentColor"]) assert.equal(def[k], "", k);
+  assert.equal(def.nameStripe, true);
+  const c = defaultConfig();
+  Object.assign(c.presets[0].style, { nameBg: "#101020", accentColor: "#00000000", nameStripe: false });
+  const r = validateConfig(c);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.value.presets[0].style.accentColor, "#00000000");
+  c.presets[0].style.nameColor = "red";
+  assert.deepEqual(validateConfig(c).errors.map((e) => e.path), ["presets[0].style.nameColor"]);
+});
