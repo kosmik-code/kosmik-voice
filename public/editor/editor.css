@@ -28,7 +28,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
-  display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); overflow: hidden;
+  display: grid; grid-template-rows: auto auto auto auto auto minmax(0, 1fr); overflow: hidden;
   background: var(--k-night); color: var(--k-cream);
   font: 14px/1.4 var(--k-font);
 }
@@ -81,13 +81,19 @@ body { grid-template-columns: minmax(0, 1fr); }
 .notice, .errors { margin: 10px 16px 0; padding: 8px 12px; background: var(--k-night-2); --shadow: none; }
 .notice { --edge: var(--k-lamp); color: var(--k-lamp); }
 .errors { --edge: var(--k-live); }
+.update-banner { --edge: var(--k-teal); color: var(--k-cream); display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.update-banner[hidden] { display: none; }
+.update-banner strong { color: var(--k-teal); }
+.update-banner code { color: var(--k-lamp); }
+.update-banner a { color: var(--k-teal); }
+.update-banner button { margin-left: auto; }
 .errors strong { color: var(--k-live); font-family: var(--k-mono); }
 .errors ul { margin: 4px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; }
 
 /* ---------- main layout ---------- */
 .layout {
   display: grid; grid-template-columns: minmax(520px, 1fr) minmax(440px, 1fr);
-  gap: 16px; padding: 14px 16px; min-height: 0; grid-row: 5;
+  gap: 16px; padding: 14px 16px; min-height: 0; grid-row: 6;
 }
 .panel, .preview { min-height: 0; overflow: auto; padding: 4px 10px 16px 4px; }
 /* Reserve the scrollbar: otherwise it appears after the preview was fitted and forces a sideways scroll. */

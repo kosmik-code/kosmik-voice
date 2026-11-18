@@ -5,6 +5,7 @@ import { ConfigStore } from "./config.js";
 import { SecretStore } from "./discord/auth.js";
 import { DiscordService } from "./discord/service.js";
 import { startServer } from "./server.js";
+import { checkForUpdate } from "./update.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.KV_DATA_DIR || path.join(root, "data"));
@@ -33,6 +34,20 @@ discord.start();
 console.log(`Kosmik Voice running`);
 console.log(`  Editor:  ${server.url}/editor/`);
 console.log(`  Overlay: ${server.url}/overlay/<preset-id>   (e.g. ${server.url}/overlay/main)`);
+
+// In the background, so startup never waits on the network. KV_UPDATE_CHECK=0 turns it off.
+if (process.env.KV_UPDATE_CHECK === "0") server.setUpdate({ state: "disabled" });
+else {
+  checkForUpdate({ root }).then((u) => {
+    server.setUpdate(u);
+    if (u.state !== "available") return;
+    const what = u.behind ? `${u.behind} new change${u.behind === 1 ? "" : "s"}` : `version ${u.latest.version}`;
+    const how = u.via === "git" ? "close Kosmik Voice, run  git pull  and start it again" : `download it from ${u.url}`;
+    console.log(`
+  ** Update available: ${what}. To install it, ${how}.`);
+    if (u.via === "git") console.log(`     What's new: ${u.url}`);
+  });
+}
 
 const shutdown = async () => {
   discord.stop();

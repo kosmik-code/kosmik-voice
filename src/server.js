@@ -1,6 +1,8 @@
 // Local HTTP + WebSocket server. Loopback only; every request must carry a local Host,
 // every mutation a same-origin Origin, so web pages cannot drive or read it.
 import http from "node:http";
+import { createHash } from "node:crypto";
+import { watch } from "node:fs";
 import { readFile, writeFile, readdir, stat, unlink, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { WebSocketServer } from "ws";
@@ -129,6 +131,32 @@ async function serveFile(res, file) {
   }
 }
 
+// Folders whose files make up the running overlay page. Their content hash is the overlay "build":
+// an open OBS source reloads itself when it changes, so app updates need no "Refresh cache of current page".
+const OVERLAY_DIRS = ["overlay", "shared"];
+
+/** Short content hash of the overlay files (missing folders count as empty). */
+export async function overlayBuild(publicDir) {
+  const hash = createHash("sha1");
+  for (const dir of OVERLAY_DIRS) {
+    let names = [];
+    try {
+      names = (await readdir(path.join(publicDir, dir))).sort();
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      try {
+        const body = await readFile(path.join(publicDir, dir, name));
+        hash.update(`${dir}/${name}\0`).update(body).update("\0");
+      } catch {
+        // subfolder or file removed while hashing: skip
+      }
+    }
+  }
+  return hash.digest("hex").slice(0, 12);
+}
+
 export async function startServer({ port = 7429, host = "127.0.0.1", dataDir, publicDir, config, secrets, discord }) {
   const assetsDir = path.join(dataDir, "assets");
   await mkdir(assetsDir, { recursive: true });
@@ -140,6 +168,30 @@ export async function startServer({ port = 7429, host = "127.0.0.1", dataDir, pu
     const data = JSON.stringify(msg);
     for (const c of wss.clients) if (c.readyState === 1) c.send(data);
   };
+  // Result of the startup update check (src/update.js), shown by the editor.
+  let update = { state: "checking" };
+  let build = await overlayBuild(publicDir);
+  let buildTimer = null;
+  const recheckBuild = () => {
+    clearTimeout(buildTimer);
+    // Editors and git write files in bursts: wait for the burst to end, then compare content.
+    buildTimer = setTimeout(async () => {
+      const next = await overlayBuild(publicDir);
+      if (next === build) return;
+      build = next;
+      broadcast({ type: "build", build });
+    }, 300);
+  };
+  const watchers = [];
+  for (const dir of OVERLAY_DIRS) {
+    try {
+      const w = watch(path.join(publicDir, dir), recheckBuild);
+      w.on("error", () => {});
+      watchers.push(w);
+    } catch {
+      // folder missing or watching unsupported: a server restart still reloads overlays via hello
+    }
+  }
   const onVoice = (voice) => broadcast({ type: "voice", voice });
   const onStatus = (status) => broadcast({ type: "status", status });
   discord.on("state", onVoice);
@@ -279,7 +331,7 @@ export async function startServer({ port = 7429, host = "127.0.0.1", dataDir, pu
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      ws.send(JSON.stringify({ type: "hello", config: config.current, status: discord.status, voice: discord.snapshot() }));
+      ws.send(JSON.stringify({ type: "hello", build, update, config: config.current, status: discord.status, voice: discord.snapshot() }));
     });
   });
 
@@ -295,10 +347,16 @@ export async function startServer({ port = 7429, host = "127.0.0.1", dataDir, pu
     url: `http://127.0.0.1:${actual}`,
     port: actual,
     broadcast,
+    setUpdate(next) {
+      update = next;
+      broadcast({ type: "update", update });
+    },
     close: () =>
       new Promise((resolve) => {
         discord.off("state", onVoice);
         discord.off("status", onStatus);
+        clearTimeout(buildTimer);
+        for (const w of watchers) w.close();
         for (const c of wss.clients) c.terminate();
         server.closeAllConnections?.();
         server.close(() => resolve());

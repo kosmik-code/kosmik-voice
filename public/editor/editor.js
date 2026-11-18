@@ -37,7 +37,9 @@ const S = {
   flags: loadFlags(), // { hidden, templatePicked, obsCopied } kept in this browser
   libraryMsg: null, // { key, params } so it follows the language
   discordMsg: null, // { tone, key }
+  update: null, // startup update check result from the server (src/update.js)
 };
+const UPDATE_DISMISS_KEY = "kv.updateDismissed";
 
 // ---------------------------------------------------------------- language (editor UI only)
 
@@ -68,6 +70,7 @@ function applyLanguage(lang) {
     b.setAttribute("aria-pressed", String(on));
   });
   $("#pv-canvas").replaceChildren(...CANVASES.map((c) => h("option", { value: c.value, text: c.label })));
+  if (S.update) renderUpdate();
 }
 
 /** ES/EN switch: re-render everything in place; the draft, dirty state and typed Discord fields survive. */
@@ -1323,7 +1326,44 @@ window.addEventListener("beforeunload", (e) => {
 
 // ---------------------------------------------------------------- live connection
 
+/** Banner when GitHub has a newer version. Dismissing hides it until there is an even newer one. */
+function renderUpdate() {
+  const box = $("#update");
+  const u = S.update;
+  const key = u?.state === "available" ? `${u.url}|${u.behind ?? u.latest?.version}` : "";
+  let dismissed = "";
+  try {
+    dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) ?? "";
+  } catch {
+    // storage blocked: the banner just shows again next time
+  }
+  box.hidden = !key || dismissed === key;
+  if (box.hidden) return box.replaceChildren();
+  const what = u.behind ? t(u.behind === 1 ? "ed.update.one" : "ed.update.many", { n: u.behind }) : t("ed.update.version", { version: u.latest.version });
+  box.replaceChildren(
+    h("strong", { text: t("ed.update.title") }),
+    h("span", { text: what }),
+    u.via === "git"
+      ? h("span", {}, parts("ed.update.howGit", { cmd: h("code", { text: "git pull" }) }))
+      : h("span", { text: t("ed.update.howZip") }),
+    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: u.via === "git" ? t("ed.update.changes") : t("ed.update.download") }),
+    h("button", { type: "button", class: "small", text: t("ed.update.dismiss"), onclick: () => {
+      try {
+        localStorage.setItem(UPDATE_DISMISS_KEY, key);
+      } catch {
+        // ignore
+      }
+      renderUpdate();
+    } }),
+  );
+}
+
 function onMessage(msg) {
+  if (msg.type === "hello" || msg.type === "update") {
+    S.update = msg.update ?? null;
+    renderUpdate();
+    if (msg.type === "update") return;
+  }
   if (msg.type === "hello" || msg.type === "config") {
     if (msg.type === "hello") {
       S.status = msg.status;

@@ -47,7 +47,7 @@ before(async () => {
       ...init,
       headers: { Origin: origin, "Content-Type": "application/json", ...(init.headers ?? {}) },
     });
-  ctx = { srv, origin, api, dataDir, config, secrets, discord };
+  ctx = { srv, origin, api, dataDir, publicDir, config, secrets, discord };
 });
 after(() => ctx.srv.close());
 
@@ -192,7 +192,8 @@ test("websocket: hello snapshot, live voice/status/config broadcasts, foreign or
   };
   await until(() => msgs.length === 1);
   assert.equal(msgs[0].type, "hello");
-  assert.deepEqual(Object.keys(msgs[0]).sort(), ["config", "status", "type", "voice"]);
+  assert.deepEqual(Object.keys(msgs[0]).sort(), ["build", "config", "status", "type", "update", "voice"]);
+  assert.match(msgs[0].build, /^[0-9a-f]{12}$/);
   ctx.discord.emit("state", { channel: null, members: [] });
   ctx.discord.emit("status", { state: "discord_closed", message: "x" });
   await until(() => msgs.length === 3);
@@ -205,6 +206,31 @@ test("websocket: hello snapshot, live voice/status/config broadcasts, foreign or
   const evil = new WebSocket(ctx.origin.replace("http", "ws") + "/ws", { origin: "https://evil.example" });
   const code = await new Promise((r) => evil.once("unexpected-response", (req, res) => r(res.statusCode)).once("error", () => r("error")));
   assert.equal(code, 403);
+});
+
+test("websocket: editing an overlay file broadcasts a new build; identical content does not", async () => {
+  const ws = new WebSocket(ctx.origin.replace("http", "ws") + "/ws", { origin: ctx.origin });
+  const msgs = [];
+  ws.on("message", (m) => msgs.push(JSON.parse(m)));
+  await new Promise((r) => ws.once("open", r));
+  const until = async (fn) => {
+    for (let i = 0; i < 300 && !fn(); i++) await new Promise((r) => setTimeout(r, 10));
+    assert.ok(fn());
+  };
+  await until(() => msgs.length === 1);
+  const first = msgs[0].build;
+  const file = path.join(ctx.publicDir, "overlay", "index.html");
+  const original = await readFile(file, "utf8");
+  await writeFile(file, original); // same content: no reload
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(msgs.filter((m) => m.type === "build").length, 0);
+  await writeFile(file, original + "<!-- v2 -->");
+  await until(() => msgs.some((m) => m.type === "build"));
+  const b = msgs.find((m) => m.type === "build").build;
+  assert.notEqual(b, first);
+  await writeFile(file, original);
+  await until(() => msgs.filter((m) => m.type === "build").length === 2);
+  ws.close();
 });
 
 test("rejected WS upgrade followed by a client reset does not crash the server", async () => {
