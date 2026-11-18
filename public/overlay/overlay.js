@@ -153,7 +153,19 @@ function showDebug(extra = "") {
   debugBox.textContent = `${presetId} · ${s} · ${ch}${extra ? ` · ${extra}` : ""}`;
 }
 
+// Overlay code version this page loaded with. When the server reports another one (app updated, or restarted
+// with new files), reload so OBS picks up the new code without "Refresh cache of current page".
+let loadedBuild = null;
+function checkBuild(build) {
+  if (!build) return false;
+  if (loadedBuild === null) loadedBuild = build;
+  if (build === loadedBuild) return false;
+  location.reload();
+  return true;
+}
+
 function onMessage(msg) {
+  if ((msg.type === "hello" || msg.type === "build") && checkBuild(msg.build)) return;
   if (msg.type === "hello") state = { config: msg.config, voice: msg.voice, status: msg.status };
   else if (msg.type === "config") state.config = msg.config;
   else if (msg.type === "voice") state.voice = msg.voice;

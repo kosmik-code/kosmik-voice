@@ -57,6 +57,8 @@ The secret and the tokens are stored in `data/secrets.json` and are never sent t
 2. In OBS, add **Sources → Browser**, paste the URL, and set that width and height (for example 2560×1440 for a 2K canvas). The preset's canvas should match OBS **Settings → Video → Base (Canvas) Resolution**.
 3. Join a voice channel. The overlay follows whichever channel your Discord client is in.
 
+Changes show up in OBS on their own: saving in the editor updates open overlays right away, and after an app update (or a restart with new files) each open overlay reloads itself. You never need *Refresh cache of current page*. The one exception: if OBS opened the source while Kosmik Voice was not running, the page never loaded, so start Kosmik Voice first or tick **Refresh browser when scene becomes active** in the source's properties.
+
 Kosmik Voice has to be running while you stream. A shortcut to `npm start`, or a Streamer.bot "run program" action, works well.
 
 ## Configuration
@@ -69,11 +71,16 @@ Each preset has an optional `canvas` (`1920x1080`, `2560x1440`, `1280x720` or `1
 
 The editor accepts `?preset=<id>` to open a specific preset, and `?gallery=1` to open the template gallery. The *Primeros pasos* progress (hidden, template picked, URL copied) is remembered per browser in `localStorage`.
 
-Environment variables: `KV_PORT` (default `7429`) and `KV_DATA_DIR` (default `./data`).
+Environment variables: `KV_PORT` (default `7429`), `KV_DATA_DIR` (default `./data`) and `KV_UPDATE_CHECK` (`0` turns off the update check).
+
+## Updates
+
+On every start, Kosmik Voice checks in the background whether this repository has something newer than your copy. If it does, the console says so and the editor shows a banner with the number of new changes and a link to see them. To update, close the app, run `git pull` in its folder and start it again; your `data/` folder is kept. *Hide* dismisses the banner until a newer update appears. Without a network connection, or if GitHub does not answer, nothing is shown and the app works as usual. A copy downloaded as a zip (no `.git` folder) compares the `version` in `package.json` instead.
 
 ## Security model
 
 - The server listens on `127.0.0.1` only.
+- The only outbound request besides Discord is the update check: one anonymous call to the GitHub API per start, carrying only the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
 - Every request must carry a `127.0.0.1:<port>` or `localhost:<port>` Host header. This blocks DNS rebinding.
 - Every change needs a same-origin `Origin` header, and JSON bodies need `Content-Type: application/json`. Other websites cannot change your config.
 - The WebSocket refuses foreign origins, so other websites cannot read who is in your call.
