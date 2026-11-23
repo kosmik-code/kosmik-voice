@@ -27,6 +27,11 @@ const LAYOUT = {
   gap: ["int", 24, 0, 400],
   padding: ["int", 24, 0, 400],
   size: ["int", 160, 32, 1024],
+  // "canvas": the source covers the whole OBS canvas and the spot is picked here (alignX/alignY + offsets).
+  // "box": the source is just big enough for `room` people (or every slot) and is moved/resized in OBS,
+  // e.g. per game by Kosmik Layouts. Additive: older configs get "canvas".
+  placement: ["enum", "canvas", ["canvas", "box"]],
+  room: ["int", 4, 1, 25],
 };
 
 const STYLE = {

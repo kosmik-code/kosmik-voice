@@ -37,6 +37,15 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 #stage.ay-bottom { align-items: flex-end; }
 #stage.dir-row.ax-right #tiles { flex-direction: row-reverse; }
 
+/* Box placement: the page is a box that OBS moves and resizes. Room around the tiles for names, glows and
+   badges; overlay.js scales #tiles down (towards the chosen corner) when more people join than it fits. */
+#stage.is-box { padding: calc(var(--pad) + var(--bleed)); --ox: 0%; --oy: 0%; }
+#stage.is-box.ax-center { --ox: 50%; }
+#stage.is-box.ax-right { --ox: 100%; }
+#stage.is-box.ay-center { --oy: 50%; }
+#stage.is-box.ay-bottom { --oy: 100%; }
+#stage.is-box #tiles { flex: none; transform-origin: var(--ox) var(--oy); }
+
 /* ---------- tile ---------- */
 .tile {
   position: relative; width: var(--size);

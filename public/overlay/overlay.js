@@ -1,6 +1,6 @@
 // Overlay renderer. Live mode: /overlay/<preset> connects to /ws.
 // Preview mode (?preview=1, inside the editor iframe): data arrives by postMessage from the same origin.
-import { buildTiles, findPreset, demoVoice } from "/shared/model.js";
+import { buildTiles, findPreset, demoVoice, boxLayout } from "/shared/model.js";
 
 const params = new URLSearchParams(location.search);
 let presetId = decodeURIComponent(location.pathname.split("/")[2] || "") || params.get("preset") || "main";
@@ -54,8 +54,12 @@ function heldState(t, now) {
 function applyPreset(p) {
   const { layout: l, style: s } = p;
   const radius = { square: "0px", rounded: `${Math.round(l.size * 0.16)}px`, circle: "50%" }[s.shape];
+  // Box placement: the page is the box OBS moves around, so offsets don't apply and a grid uses only the
+  // columns it needs. The bleed keeps names, glows and badges inside the page.
+  const box = l.placement === "box" ? boxLayout(state.config, p) : null;
   const vars = {
-    "--size": `${l.size}px`, "--gap": `${l.gap}px`, "--pad": `${l.padding}px`, "--cols": l.columns,
+    "--size": `${l.size}px`, "--gap": `${l.gap}px`, "--pad": `${l.padding}px`, "--cols": box ? box.cols : l.columns,
+    "--bleed": `${box ? box.bleed : 0}px`,
     "--talk": s.talkColor, "--idle-dim": s.idleDim, "--mute-dim": s.muteDim,
     "--name-size": `${s.nameSize}px`, "--radius": radius,
     "--frame-w": `${Math.max(3, Math.round(l.size / 26))}px`,
@@ -66,9 +70,9 @@ function applyPreset(p) {
     if (s[k]) stage.style.setProperty(v, s[k]);
     else stage.style.removeProperty(v);
   }
-  stage.style.transform = l.offsetX || l.offsetY ? `translate(${l.offsetX}px, ${l.offsetY}px)` : "";
+  stage.style.transform = !box && (l.offsetX || l.offsetY) ? `translate(${l.offsetX}px, ${l.offsetY}px)` : "";
   stage.className = [
-    `theme-${p.theme}`, `shape-${s.shape}`, `dir-${l.direction}`, `ax-${l.alignX}`, `ay-${l.alignY}`,
+    `theme-${p.theme}`, box ? "is-box" : "", `shape-${s.shape}`, `dir-${l.direction}`, `ax-${l.alignX}`, `ay-${l.alignY}`,
     s.frame ? "has-frame" : "", s.talkGlow ? "" : "no-glow",
     s.showNames ? "" : "no-names", s.showRoles ? "" : "no-roles", s.showMuteIcon ? "" : "no-mute-icon",
     s.nameStripe === false ? "no-name-stripe" : "",
@@ -142,8 +146,23 @@ function render() {
   ordered.forEach((el, i) => {
     if (list.children[i] !== el) list.insertBefore(el, list.children[i] ?? null);
   });
+  fitBox();
   showDebug();
 }
+
+/** Box placement: if more people join than the box has room for (or OBS made the source smaller), shrink
+ *  them towards the chosen corner instead of cutting anyone off. */
+function fitBox() {
+  list.style.transform = "";
+  if (!stage.classList.contains("is-box")) return;
+  const cs = getComputedStyle(stage);
+  const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const hgt = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (!list.offsetWidth || !list.offsetHeight || w <= 0 || hgt <= 0) return;
+  const k = Math.min(1, w / list.offsetWidth, hgt / list.offsetHeight);
+  if (k < 0.995) list.style.transform = `scale(${k.toFixed(4)})`;
+}
+window.addEventListener("resize", fitBox);
 
 function showDebug(extra = "") {
   if (!debug) return;

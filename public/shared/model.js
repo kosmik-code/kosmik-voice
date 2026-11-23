@@ -96,3 +96,38 @@ export function demoVoice(config, preset, tick, labels = { guest: (n) => `Guest 
   });
   return { channel: { id: "demo", name: "Demo", guildId: null }, members };
 }
+
+/** How many people a box-placed preset is sized for: every slot, or the preset's "room for" count. */
+export function boxCount(config, preset) {
+  if (preset?.mode === "slots") return Math.max(1, preset.users?.length || config?.users?.length || 1);
+  return Math.max(1, preset?.layout?.room ?? 4);
+}
+
+/**
+ * Box placement: the browser source is only as big as its people need, so it can be moved and resized in OBS
+ * (by hand, or per game by Kosmik Layouts). Returns the source size to type in OBS, the grid columns and the
+ * bleed: transparent room around the tiles for names wider than a tile, glows, badges and the talk bounce.
+ * Generous on purpose; the overlay also shrinks the people to fit if a theme needs more.
+ */
+export function boxLayout(config, preset) {
+  const l = preset?.layout ?? {};
+  const s = preset?.style ?? {};
+  const size = l.size ?? 160;
+  const gap = l.gap ?? 24;
+  const padding = l.padding ?? 24;
+  const n = boxCount(config, preset);
+  const cols = l.direction === "column" ? 1 : l.direction === "grid" ? Math.min(n, l.columns ?? 4) : n;
+  const rows = Math.ceil(n / cols);
+  const frameW = Math.max(3, Math.round(size / 26));
+  const nameH = s.showNames === false ? 0 : Math.ceil((s.nameSize ?? 22) * 1.3 + 8 + frameW + 24);
+  const bleed = Math.ceil(Math.max(24, size * 0.12));
+  const edge = 2 * (padding + bleed);
+  const even = (v) => Math.ceil(v / 2) * 2;
+  return {
+    count: n,
+    cols,
+    bleed,
+    width: even(cols * size + (cols - 1) * gap + edge),
+    height: even(rows * (size + nameH) + (rows - 1) * gap + edge),
+  };
+}

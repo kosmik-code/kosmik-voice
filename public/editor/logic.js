@@ -1,5 +1,5 @@
 // Pure editor logic (no DOM): shared by editor.js in the browser and node tests.
-import { demoVoice } from "../shared/model.js";
+import { demoVoice, boxLayout } from "../shared/model.js";
 import { t, LANGUAGES } from "./i18n.js";
 
 /** Define getters that translate on every read, so labels follow the current editor language. */
@@ -33,6 +33,8 @@ export const FIELDS = {
     gap: spec("layout", "gap", { kind: "int", def: 24, min: 0, max: 400 }),
     padding: spec("layout", "padding", { kind: "int", def: 24, min: 0, max: 400 }),
     size: spec("layout", "size", { kind: "int", def: 160, min: 32, max: 1024 }),
+    placement: spec("layout", "placement", { kind: "enum", def: "canvas" }, ["canvas", "box"]),
+    room: spec("layout", "room", { kind: "int", def: 4, min: 1, max: 25 }),
   },
   style: {
     shape: spec("style", "shape", { kind: "enum", def: "square" }, ["square", "rounded", "circle"]),
@@ -538,8 +540,10 @@ export function firstSteps({ status, config, flags = {} }) {
 }
 
 /** What to paste and type in OBS for a preset. */
-export function obsSetup(preset, origin) {
-  const { width, height } = canvasSize(preset?.canvas);
+/** Browser source address and size. Box placement: sized for its people; otherwise the preset's canvas. */
+export function obsSetup(preset, origin, config) {
+  const box = preset?.layout?.placement === "box";
+  const { width, height } = box ? boxLayout(config, preset) : canvasSize(preset?.canvas);
   const url = `${origin}/overlay/${encodeURIComponent(preset?.id ?? "")}`;
-  return { url, width, height, text: t("obs.text", { width, height }) };
+  return { url, width, height, box, text: t(box ? "obs.textBox" : "obs.text", { width, height }) };
 }

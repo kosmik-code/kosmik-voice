@@ -34,7 +34,7 @@ import {
   THEMES,
 } from "../public/editor/logic.js";
 import { defaultConfig, defaultPreset, validateConfig, THEMES as SERVER_THEMES } from "../src/config.js";
-import { buildTiles } from "../public/shared/model.js";
+import { buildTiles, boxLayout } from "../public/shared/model.js";
 
 const A = "111111111111111111";
 const B = "222222222222222222";
@@ -315,6 +315,39 @@ test("obsSetup gives the overlay URL and the exact width/height of the preset ca
   const legacy = newPreset("main", "Principal");
   delete legacy.canvas;
   assert.deepEqual([obsSetup(legacy, "").width, obsSetup(legacy, "").height], [1920, 1080]);
+});
+
+test("box placement: old presets stay on the canvas; a box is sized for its people", () => {
+  const legacy = cfg();
+  delete legacy.presets[0].layout.placement;
+  delete legacy.presets[0].layout.room;
+  const r = validateConfig(legacy);
+  assert.equal(r.ok, true);
+  assert.equal(r.value.presets[0].layout.placement, "canvas");
+  assert.equal(r.value.presets[0].layout.room, 4);
+
+  const p = newPreset("box", "Box");
+  p.layout = { ...p.layout, placement: "box", direction: "row", size: 100, gap: 10, padding: 0, room: 3 };
+  const b = boxLayout({ users: [] }, p);
+  assert.equal(b.count, 3);
+  assert.equal(b.cols, 3);
+  // three tiles and two gaps, plus the bleed on both sides
+  assert.equal(b.width, 3 * 100 + 2 * 10 + 2 * b.bleed);
+  // one more person needs a wider box; a column is one tile wide and three tall
+  assert.ok(boxLayout({}, { ...p, layout: { ...p.layout, room: 4 } }).width > b.width);
+  const col = boxLayout({}, { ...p, layout: { ...p.layout, direction: "column" } });
+  assert.equal(col.cols, 1);
+  assert.ok(col.height > col.width);
+  // a grid never uses more columns than people
+  assert.equal(boxLayout({}, { ...p, layout: { ...p.layout, direction: "grid", columns: 6, room: 2 } }).cols, 2);
+  // slots: one per listed person (or every user when none are listed)
+  assert.equal(boxLayout({ users: [{ id: A }, { id: B }] }, { ...p, mode: "slots", users: [] }).count, 2);
+  assert.equal(boxLayout({ users: [{ id: A }, { id: B }] }, { ...p, mode: "slots", users: [A] }).count, 1);
+
+  const o = obsSetup(p, "", { users: [] });
+  assert.equal(o.box, true);
+  assert.deepEqual([o.width, o.height], [b.width, b.height]);
+  assert.equal(obsSetup({ ...p, layout: { ...p.layout, placement: "canvas" } }, "").box, false);
 });
 
 // ---------------------------------------------------------------- S12 templates

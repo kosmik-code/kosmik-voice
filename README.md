@@ -10,6 +10,7 @@ A free Discord voice overlay for OBS. Everyone in your voice channel appears on 
 - **Ready-made looks**: a row at the bottom, a column on the side, a squad grid, speech bubbles, only whoever is talking… pick a template and adjust it.
 - **Five styles**: Clean, Pixel café, Neón, Cómic / sticker and Glass.
 - **Nicknames on screen** instead of Discord names, if you like.
+- **Place it in the editor or in OBS.** Pick a spot on the screen here, or make it a free box you drag and resize in OBS like any other source (and that [Kosmik Layouts](https://github.com/kosmik-code/kosmik-layouts) can move per game).
 - **Live preview** in the editor that can fake a call, so you can design it without anyone online.
 - **Private and free.** It runs on your PC and talks to your own Discord app. No bot joins your call and nothing is uploaded anywhere.
 
@@ -64,6 +65,7 @@ Changes you save in the editor show up in OBS straight away; no need to refresh 
 
 - **Kosmik Voice must be running while you stream.** A desktop shortcut that runs `npm start` works well.
 - **Several overlays:** each preset has its own OBS address, so you can have a bottom row in one scene and a big grid in another.
+- **Moving it around in OBS:** set *Placement* to **Free box**. The source then only covers its people, so you can drag and resize it in OBS. *Room for* sets how many people the box is made for; if more join, everyone shrinks to fit. If you change the image size or the room later, update the width and height in OBS too.
 - **Positioning without a call:** add `?demo=1` to the end of the overlay address in OBS to see sample people while you place it.
 - **Updates:** when there's a new version, the editor shows a banner. Close the app, download the new version (or `git pull`) and start it again. Your settings and pictures in the `data` folder are kept.
 - **The overlay stays blank in OBS?** Start Kosmik Voice before opening OBS, or tick *Refresh browser when scene becomes active* in the source's properties.
@@ -89,6 +91,7 @@ The secret and the tokens are stored in `data/secrets.json` and never sent to th
 - **Names, roles and role colours.** Row, column or grid layouts with alignment, offsets, gap, padding and size.
 - **Aliases** per user, or typed straight next to whoever is in your call (**Users › In the call now**), which also adds the person. An empty alias falls back to the Discord name.
 - **Templates**: bottom row, side column, squad grid, PNGtuber solo, only whoever talks, bubbles, vertical, blank, Neón row, stickers and glass cards. Pick your OBS canvas in the gallery and sizes are scaled for it.
+- **Placement**: *Fixed spot on the canvas* (the source covers the whole canvas; position and offsets are set in the editor) or *Free box* (the source is sized for `room` people, or one per slot, plus a margin for names, glows and badges; the 3×3 picker sets where people gather inside it; if more people join than it was sized for, the overlay scales them down towards that corner). Offsets don't apply to a box.
 - **Canvas per preset**: Full HD 1920×1080, 2K 2560×1440, HD 1280×720 or Vertical 1080×1920. It drives the preview and the size the editor tells you to type in OBS; the overlay itself fills whatever size OBS gives it.
 - **Limits**: up to 20 presets (one OBS address each), 50 users, and 25 users per preset.
 - **Editor**: Spanish or English, and three looks (Studio, Daylight, Pixel), both under the round button at the top right. The language follows your browser the first time. Both choices are remembered per browser and never touch your settings or overlays. The preview can simulate a call: per-user states, everyone talking, a rotating speaker, or all states at once.

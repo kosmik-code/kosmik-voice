@@ -7,6 +7,7 @@ import {
   callMembers, setAlias, discordHelp, firstSteps, obsSetup, THEMES, pickLanguage,
 } from "/editor/logic.js";
 import { t, parts, getLanguage, setLanguage } from "/editor/i18n.js";
+import { boxLayout } from "/shared/model.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const TABS = ["discord", "users", "presets"];
@@ -14,7 +15,8 @@ const TABS = ["discord", "users", "presets"];
 const IMAGE_SLOTS = ["idle", "talking", "muted", "deafened"];
 const LANG_KEY = "kv-editor-lang";
 // Preset fields shown up front; everything else lives under "Ajustes avanzados".
-const BASIC = { layout: ["alignX", "alignY", "size"], style: ["showNames", "talkAnimation"] };
+const BASIC = { layout: ["alignX", "alignY", "size", "placement", "room"], style: ["showNames", "talkAnimation"] };
+const isBox = (pr) => pr?.layout?.placement === "box";
 // Advanced style fields grouped under "Colores del tema" instead of the generic style grid.
 const THEME_COLOR_FIELDS = ["talkColor", "frameColor", "boxColor", "nameColor", "nameBg", "nameBorder", "accentColor", "nameStripe"];
 const FLAGS_KEY = "kv.firstSteps";
@@ -371,6 +373,12 @@ function colorField(path, label, { allowEmpty, themeDefault, hint } = {}) {
   });
   sync();
   return field(path, label, h("div", { class: "color-row" }, pick, text, reset), { hint });
+}
+
+/** A schema select with its own change handler and hint (for fields that reshape the form). */
+function schemaFieldWith(group, name, opts) {
+  const spec = FIELDS[group][name];
+  return selectField(`presets[${S.presetIdx}].${group}.${name}`, spec.label, spec.options, opts);
 }
 
 function schemaField(group, name) {
@@ -824,9 +832,10 @@ const posLabel = (x, y) => t(`pos.${y}.${x}`);
 /** 3x3 position picker for alignX/alignY (a radio group with arrow-key navigation). */
 function positionPicker(i) {
   const l = preset().layout;
+  const capKey = isBox(preset()) ? "ed.pos.captionBox" : "ed.pos.caption";
   const X = ["left", "center", "right"];
   const Y = ["top", "center", "bottom"];
-  const caption = h("small", { class: "hint", id: "pos-hint", text: t("ed.pos.caption", { pos: posLabel(l.alignX, l.alignY) }) });
+  const caption = h("small", { class: "hint", id: "pos-hint", text: t(capKey, { pos: posLabel(l.alignX, l.alignY) }) });
   const cells = [];
   const select = (x, y, focus) => {
     S.draft.presets[i].layout.alignX = x;
@@ -838,7 +847,7 @@ function positionPicker(i) {
       c.classList.toggle("active", on);
       if (on && focus) c.focus();
     }
-    caption.textContent = t("ed.pos.caption", { pos: posLabel(x, y) });
+    caption.textContent = t(capKey, { pos: posLabel(x, y) });
     edited(`presets[${i}].layout.alignX`);
     edited(`presets[${i}].layout.alignY`);
   };
@@ -863,7 +872,7 @@ function positionPicker(i) {
     }
   }
   return h("div", { class: "field", "data-path": `presets[${i}].layout.alignX` },
-    h("span", { class: "field-label", id: "pos-label", text: t("ed.pos.label") }),
+    h("span", { class: "field-label", id: "pos-label", text: t(isBox(preset()) ? "ed.pos.labelBox" : "ed.pos.label") }),
     h("div", { class: "pos-grid", role: "radiogroup", "aria-labelledby": "pos-label", "aria-describedby": "pos-hint", "data-path": `presets[${i}].layout.alignY` }, cells),
     caption,
   );
@@ -879,7 +888,7 @@ function urlRow(label, url) {
 }
 
 async function copyForObs(pr) {
-  const o = obsSetup(pr, location.origin);
+  const o = obsSetup(pr, location.origin, S.draft);
   const saved = S.base.presets.some((p) => p.id === pr.id);
   await copyText(o.url, null);
   setFlag("obsCopied", true);
@@ -888,7 +897,7 @@ async function copyForObs(pr) {
 }
 
 function obsCard(pr, saved) {
-  const o = obsSetup(pr, location.origin);
+  const o = obsSetup(pr, location.origin, S.draft);
   return h("div", { class: "card obs", id: "preset-urls" },
     h("h2", { text: t("ed.obs.title") }),
     h("div", { class: "obs-row" },
@@ -901,8 +910,9 @@ function obsCard(pr, saved) {
     h("ol", { class: "steps numbered compact" },
       h("li", {}, parts("ed.obs.step1", { sources: h("strong", { text: t("ed.obs.sources") }), plus: h("strong", { text: "+" }), browser: h("strong", { text: t("ed.obs.browser") }) })),
       h("li", {}, parts("ed.obs.step2", { url: h("strong", { text: "URL" }) })),
-      h("li", {}, t("ed.obs.step3", { width: o.width, height: o.height, canvas: canvasLabel(pr.canvas) })),
+      h("li", {}, o.box ? t("ed.obs.step3Box", { width: o.width, height: o.height }) : t("ed.obs.step3", { width: o.width, height: o.height, canvas: canvasLabel(pr.canvas) })),
     ),
+    o.box ? h("p", { class: "hint", text: t("ed.obs.boxHint") }) : null,
     saved ? null : h("p", { class: "msg tone-warn", text: t("ed.obs.unsaved") }),
     h("details", { class: "detail" },
       h("summary", { text: t("ed.obs.detail") }),
@@ -942,7 +952,8 @@ function renderPresets() {
     layoutPreview();
   };
   const advErrors = Object.keys(S.errors.fields).some((p) => p.startsWith(`presets[${i}].`) && isAdvanced(p));
-  const pick = (group) => Object.keys(FIELDS[group]).filter((k) => !BASIC[group].includes(k) && !(group === "style" && THEME_COLOR_FIELDS.includes(k)));
+  const pick = (group) => Object.keys(FIELDS[group]).filter((k) => !BASIC[group].includes(k) && !(group === "style" && THEME_COLOR_FIELDS.includes(k))
+    && !(group === "layout" && isBox(pr) && (k === "offsetX" || k === "offsetY")));
   const sizeSpec = FIELDS.layout.size;
   return [
     h("div", { class: "card" },
@@ -971,7 +982,12 @@ function renderPresets() {
           { value: "reactive", label: t("ed.mode.reactive") },
           { value: "slots", label: t("ed.mode.slots") },
         ], { onChange: () => change(() => null), hint: pr.mode === "slots" ? t("ed.mode.hintSlots") : t("ed.mode.hintReactive") }),
-        selectField(`presets[${i}].canvas`, PRESET_LABELS.canvas, CANVASES, { onChange: onCanvas, hint: t("ed.canvasHint") }),
+        schemaFieldWith("layout", "placement", { onChange: () => change(() => null), hint: t(isBox(pr) ? "ed.placement.hintBox" : "ed.placement.hintCanvas") }),
+        isBox(pr)
+          ? pr.mode === "slots"
+            ? h("div", { class: "field" }, h("span", { class: "field-label", text: FIELDS.layout.room.label }), h("small", { class: "hint", text: t("ed.room.slots", { n: boxLayout(S.draft, pr).count }) }))
+            : numberField(`presets[${i}].layout.room`, FIELDS.layout.room, { hint: t("ed.room.hint") })
+          : selectField(`presets[${i}].canvas`, PRESET_LABELS.canvas, CANVASES, { onChange: onCanvas, hint: t("ed.canvasHint") }),
         themeField(i),
         positionPicker(i),
         h("div", { class: "stack" },
@@ -1158,8 +1174,15 @@ function postPreview() {
   const v = previewVoice();
   frame.contentWindow.postMessage({ type: "preview", presetId: "preview", config, voice: v }, location.origin);
   const cv = effectiveCanvas();
+  const sz = previewSize();
+  if (`${sz.width}x${sz.height}` !== shownSize) {
+    // Size, gap, names, "room for"... changed the box: resize the preview and the size shown under "Add to OBS".
+    layoutPreview();
+    const card = $("#preset-urls");
+    if (card) card.replaceWith(obsCard(preset(), S.base.presets.some((p) => p.id === preset().id)));
+  }
   const source = S.sim.source === "live" ? (S.voice?.channel ? t("ed.pv.live", { n: v.members.length, channel: S.voice.channel.name }) : t("ed.pv.liveNone")) : t("ed.pv.sim");
-  $("#pv-caption").textContent = `${preset().name || preset().id} · ${canvasLabel(cv)}${S.canvasOverride ? t("ed.pv.previewOnly") : ""} · ${source}`;
+  $("#pv-caption").textContent = `${preset().name || preset().id} · ${sz.box ? t("ed.pv.box", { width: sz.width, height: sz.height }) : `${canvasLabel(cv)}${S.canvasOverride ? t("ed.pv.previewOnly") : ""}`} · ${source}`;
 }
 
 function schedulePreview() {
@@ -1180,14 +1203,27 @@ window.addEventListener("message", (e) => {
 frame.addEventListener("load", markFrameReady);
 if (frame.contentDocument?.readyState === "complete" && frame.contentWindow.location.pathname.startsWith("/overlay/")) markFrameReady();
 
+let shownSize = "";
+/** What the preview shows: a box-placed preset at its own size, otherwise the (preview) canvas. */
+function previewSize() {
+  const pr = S.draft ? preset() : null;
+  if (isBox(pr)) return { ...boxLayout(S.draft, pr), box: true };
+  return { ...canvasSize(S.draft ? effectiveCanvas() : CANVASES[0].value), box: false };
+}
+
 function layoutPreview() {
-  const { width: w, height: hgt } = canvasSize(S.draft ? effectiveCanvas() : CANVASES[0].value);
+  const { width: w, height: hgt, box } = previewSize();
+  shownSize = `${w}x${hgt}`;
   const sel = $("#pv-canvas");
   if (S.draft && sel.value !== effectiveCanvas()) sel.value = effectiveCanvas();
+  sel.disabled = box;
+  sel.closest("label").hidden = box; // a box has no canvas: it previews at its own size
+  stage.classList.toggle("is-box", box);
   const aside = stage.parentElement;
   const avail = aside.clientWidth - 2 * 12;
   const maxH = Math.max(240, window.innerHeight * (hgt > w ? 0.62 : 0.5));
-  const scale = Math.min(avail / w, maxH / hgt);
+  // A box is shown at most at its real size, so a small one doesn't look bigger than it is.
+  const scale = Math.min(avail / w, maxH / hgt, box ? 1 : Infinity);
   stage.style.width = `${Math.floor(w * scale)}px`;
   stage.style.height = `${Math.floor(hgt * scale)}px`;
   frame.style.width = `${w}px`;
@@ -1205,7 +1241,7 @@ $("#pv-canvas").addEventListener("change", (e) => {
   layoutPreview();
 });
 $("#pv-bg").addEventListener("change", (e) => {
-  stage.className = `stage bg-${e.target.value}`;
+  stage.className = `stage bg-${e.target.value}${stage.classList.contains("is-box") ? " is-box" : ""}`;
 });
 $("#pv-preset").addEventListener("change", (e) => {
   S.presetIdx = Number(e.target.value);
