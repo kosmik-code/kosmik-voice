@@ -58,7 +58,7 @@ export function defaultPreset(id = "main", name = "Principal") {
     id,
     name,
     mode: "reactive",
-    theme: "pixel-cafe",
+    theme: "clean",
     canvas: CANVASES[0],
     users: [],
     showUnlisted: true,

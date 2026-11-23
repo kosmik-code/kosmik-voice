@@ -225,11 +225,12 @@ function orderedUserIds(config, preset) {
  */
 export function simulationVoice(config, preset, sim) {
   const source = sim?.source ?? "manual";
+  const labels = { guest: (n) => t("ed.sim.guest", { n }), user: (n) => t("sim.user", { n }) };
   if (source === "live") return sim.live ?? { channel: null, members: [] };
-  if (source === "rotate") return demoVoice(config, preset, Number(sim.tick) || 0);
-  if (source === "static") return demoVoice(config, preset, "static");
+  if (source === "rotate") return demoVoice(config, preset, Number(sim.tick) || 0, labels);
+  if (source === "static") return demoVoice(config, preset, "static", labels);
   if (source === "all") {
-    const v = demoVoice(config, preset, 0);
+    const v = demoVoice(config, preset, 0, labels);
     return { ...v, members: v.members.map((m) => ({ ...m, speaking: true, muted: false, deafened: false })) };
   }
   const users = new Map((config?.users ?? []).map((u) => [u.id, u]));
@@ -354,7 +355,7 @@ export function knownPaths(config) {
 /** Same shape as defaultPreset() in src/config.js, built from FIELDS (src/ is not served). */
 export function newPreset(id, name) {
   const fill = (g) => Object.fromEntries(Object.entries(FIELDS[g]).map(([k, f]) => [k, f.def]));
-  return { id, name, mode: "reactive", theme: "pixel-cafe", canvas: CANVASES[0].value, users: [], showUnlisted: true, layout: fill("layout"), style: fill("style") };
+  return { id, name, mode: "reactive", theme: "clean", canvas: CANVASES[0].value, users: [], showUnlisted: true, layout: fill("layout"), style: fill("style") };
 }
 
 // ---------------------------------------------------------------- templates (S12)

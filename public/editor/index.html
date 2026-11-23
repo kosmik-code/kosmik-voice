@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kosmik Voice · Editor</title>
+  <script src="/editor/kosmik-ui.js"></script>
+  <link rel="stylesheet" href="/editor/kosmik-ui.css">
   <link rel="stylesheet" href="/editor/editor.css">
 </head>
 <body>
   <!-- Static text is Spanish until editor.js applies the chosen language (data-i18n = text, data-i18n-attr = attr:key;...). -->
   <header class="bar">
-    <h1 class="brand">Kosmik<span>Voice</span></h1>
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Kosmik<span>Voice</span></h1>
     <nav class="tabs" aria-label="Secciones" data-i18n-attr="aria-label:html.sections">
       <a href="#discord" data-tab="discord">Discord</a>
       <a href="#users" data-tab="users" data-i18n="html.tab.users">Usuarios</a>
@@ -22,10 +24,21 @@
       <button id="discard" type="button" disabled data-i18n="html.discard">Descartar</button>
       <button id="save" type="button" class="primary" disabled title="Ctrl+S" data-i18n="html.save">Guardar cambios</button>
     </div>
-    <div id="lang-switch" class="seg small lang-switch" role="group" aria-label="Idioma" data-i18n-attr="aria-label:lang.group">
-      <button type="button" data-lang="es" lang="es" aria-label="Español" title="Español" aria-pressed="true" class="active">ES</button>
-      <button type="button" data-lang="en" lang="en" aria-label="English" title="English" aria-pressed="false">EN</button>
-    </div>
+    <details class="k-menu" id="appearance">
+      <summary aria-label="Aspecto e idioma" title="Aspecto e idioma" data-i18n-attr="aria-label:html.appearance;title:html.appearance">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor"/></svg>
+      </summary>
+      <div class="k-menu-panel">
+        <div class="k-menu-group"><span data-i18n="look.title">Aspecto</span><div id="looks"></div></div>
+        <div class="k-menu-group">
+          <span data-i18n="lang.group">Idioma</span>
+          <div id="lang-switch" class="seg" role="group" aria-label="Idioma" data-i18n-attr="aria-label:lang.group">
+            <button type="button" data-lang="es" lang="es" aria-pressed="true" class="active">Español</button>
+            <button type="button" data-lang="en" lang="en" aria-pressed="false">English</button>
+          </div>
+        </div>
+      </div>
+    </details>
   </header>
 
   <div id="update" class="notice update-banner" role="status" hidden></div>

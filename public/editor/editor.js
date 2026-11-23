@@ -70,6 +70,7 @@ function applyLanguage(lang) {
     b.setAttribute("aria-pressed", String(on));
   });
   $("#pv-canvas").replaceChildren(...CANVASES.map((c) => h("option", { value: c.value, text: c.label })));
+  window.KosmikUI?.mountLooks($("#looks"), { studio: t("look.studio"), daylight: t("look.daylight"), pixel: t("look.pixel") });
   if (S.update) renderUpdate();
 }
 
@@ -499,11 +500,11 @@ function renderDiscord() {
     render();
   };
   const q = (word) => h("strong", { text: word });
-  return [
-    h("div", { class: "card" },
-      h("h2", { text: t("ed.discord.title") }),
-      h("p", { class: "lead", text: t("ed.discord.lead") }),
-      h("ol", { class: "steps numbered" },
+  // The walkthrough leads until the app is set up; afterwards it folds away under the fields.
+  const setUp = Boolean(info?.clientId && info?.hasClientSecret);
+  const guide = h("details", { class: "guide", open: !setUp },
+    h("summary", { text: t(setUp ? "ed.discord.guideAgain" : "ed.discord.guide") }),
+    h("ol", { class: "steps numbered" },
         h("li", {}, parts("ed.discord.step1", { link: h("a", { href: PORTAL_URL, target: "_blank", rel: "noopener noreferrer", text: "discord.com/developers/applications" }) })),
         h("li", {}, parts("ed.discord.step2", { newApp: q("New Application"), name: h("code", { text: "Kosmik Voice" }), create: q("Create") })),
         h("li", {}, parts("ed.discord.step3", { oauth: q("OAuth2") })),
@@ -511,8 +512,15 @@ function renderDiscord() {
         h("li", {}, parts("ed.discord.step5", { reset: q("Reset Secret"), secret: q("Client Secret") })),
         h("li", {}, parts("ed.discord.step6", { redirects: q("Redirects"), add: q("Add Redirect"), url: h("code", { text: "http://127.0.0.1" }), save: q("Save Changes") })),
         h("li", {}, parts("ed.discord.step7", { connect: q(t("ed.discord.submit")), authorize: q(t("ed.discord.authorize")) })),
-      ),
-      h("p", { class: "warn-box", role: "note" }, h("strong", { text: t("ed.discord.warnLead") }), t("ed.discord.warn")),
+    ),
+    h("p", { class: "warn-box", role: "note" }, h("strong", { text: t("ed.discord.warnLead") }), t("ed.discord.warn")),
+  );
+  if (!setUp) guide.classList.add("first");
+  return [
+    h("div", { class: "card" },
+      h("h2", { text: t("ed.discord.title") }),
+      h("p", { class: "lead", text: t("ed.discord.lead") }),
+      setUp ? null : guide,
       h("form", { class: "grid2", onsubmit: onSave },
         h("div", { class: "field", "data-path": "discord.clientId" },
           h("label", { for: "discord-id", text: "Client ID" }),
@@ -530,6 +538,7 @@ function renderDiscord() {
           msg ? h("span", { class: `msg tone-${msg.tone}`, role: "status", text: t(msg.key) }) : null,
         ),
       ),
+      setUp ? guide : null,
     ),
     discordStatus(),
   ];
@@ -1300,7 +1309,8 @@ function renderConn() {
   const c = $("#conn");
   c.className = `pill tone-${st.tone}`;
   c.title = st.text;
-  c.textContent = S.voice?.channel && S.status?.state === "ready" ? `${st.text} · ${S.voice.channel.name} (${S.voice.members.length})` : st.text;
+  const text = S.voice?.channel && S.status?.state === "ready" ? `${st.text} · ${S.voice.channel.name} (${S.voice.members.length})` : st.text;
+  c.replaceChildren(h("span", { class: "pill-text", text }));
 }
 
 function setTab(tab) {

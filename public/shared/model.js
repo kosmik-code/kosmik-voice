@@ -73,8 +73,9 @@ function demoAvatar(i, label) {
 /**
  * Fake voice snapshot to position the overlay without a call.
  * tick = number: everyone present, speaker rotates. tick = "static": talking, idle, muted, deafened, then absent.
+ * labels: names for sample guests and unnamed users (the editor passes them in its own language).
  */
-export function demoVoice(config, preset, tick) {
+export function demoVoice(config, preset, tick, labels = { guest: (n) => `Guest ${n}`, user: (n) => `User ${n}` }) {
   const users = config?.users ?? [];
   let ids = preset?.users?.length ? [...preset.users] : users.map((u) => u.id);
   const names = new Map(users.map((u) => [u.id, u.displayName]));
@@ -82,7 +83,7 @@ export function demoVoice(config, preset, tick) {
   if (preset?.mode !== "slots") for (let n = 1; ids.length < 4; n++) ids.push(`demo-${n}`);
   if (tick === "static") ids = ids.slice(0, 4);
   const members = ids.map((id, i) => {
-    const name = names.get(id) || (id.startsWith("demo-") ? `Invitado ${id.slice(5)}` : `Usuario ${i + 1}`);
+    const name = names.get(id) || (id.startsWith("demo-") ? labels.guest(id.slice(5)) : labels.user(i + 1));
     const s = tick === "static" ? i : -1;
     return {
       id,

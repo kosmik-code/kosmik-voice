@@ -18,7 +18,7 @@ test("default config is valid and fills preset defaults", () => {
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   const p = r.value.presets[0];
   assert.equal(p.mode, "reactive");
-  assert.equal(p.theme, "pixel-cafe");
+  assert.equal(p.theme, "clean");
   assert.equal(p.layout.size, 160);
   assert.equal(p.style.talkAnimation, "bounce");
 });
