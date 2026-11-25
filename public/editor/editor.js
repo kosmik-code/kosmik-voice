@@ -40,6 +40,7 @@ const S = {
   libraryMsg: null, // { key, params } so it follows the language
   discordMsg: null, // { tone, key }
   update: null, // startup update check result from the server (src/update.js)
+  serverVersion: null, // the app version from the first hello; a new one after an update reloads the page
 };
 const UPDATE_DISMISS_KEY = "kv.updateDismissed";
 
@@ -1376,6 +1377,13 @@ window.addEventListener("beforeunload", (e) => {
 function renderUpdate() {
   const box = $("#update");
   const u = S.update;
+  if (u?.state === "installing") {
+    box.hidden = false;
+    return box.replaceChildren(
+      h("strong", { text: t("ed.update.installing", { version: u.latest?.version ?? "" }) }),
+      h("span", { text: t("ed.update.restarting") }),
+    );
+  }
   const key = u?.state === "available" ? `${u.url}|${u.behind ?? u.latest?.version}` : "";
   let dismissed = "";
   try {
@@ -1391,8 +1399,16 @@ function renderUpdate() {
     h("span", { text: what }),
     u.via === "git"
       ? h("span", {}, parts("ed.update.howGit", { cmd: h("code", { text: "git pull" }) }))
-      : h("span", { text: t("ed.update.howZip") }),
-    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: u.via === "git" ? t("ed.update.changes") : t("ed.update.download") }),
+      : h("span", { text: t(u.error ? "ed.update.failed" : u.install ? "ed.update.howInstall" : u.via === "app" ? "ed.update.howApp" : "ed.update.howZip") }),
+    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: u.via === "git" || (u.install && !u.error) ? t("ed.update.changes") : t("ed.update.download") }),
+    u.install
+      ? h("button", { type: "button", class: "small primary", text: t(u.error ? "ed.update.retry" : "ed.update.install"), onclick: async (e) => {
+          const button = e.currentTarget;
+          button.disabled = true;
+          const r = await api("/api/update/install", { method: "POST" }).catch(() => ({ ok: false }));
+          if (!r.ok) button.disabled = false;
+        } })
+      : null,
     h("button", { type: "button", class: "small", text: t("ed.update.dismiss"), onclick: () => {
       try {
         localStorage.setItem(UPDATE_DISMISS_KEY, key);
@@ -1405,6 +1421,11 @@ function renderUpdate() {
 }
 
 function onMessage(msg) {
+  if (msg.type === "hello" && msg.version) {
+    // After an update the app restarts with new pages: load them (unless there are unsaved edits).
+    if (S.serverVersion && msg.version !== S.serverVersion && !dirty()) return location.reload();
+    S.serverVersion = msg.version;
+  }
   if (msg.type === "hello" || msg.type === "update") {
     S.update = msg.update ?? null;
     renderUpdate();

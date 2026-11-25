@@ -1,0 +1,49 @@
+[package]
+name = "kosmik-voice"
+version = "0.2.0"
+description = "Discord voice overlay for OBS"
+authors = ["Kosmik"]
+license = "MIT"
+repository = "https://github.com/kosmik-code/kosmik-voice"
+edition = "2024"
+publish = false
+
+[lib]
+name = "kosmik_voice"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kosmik-voice"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-opener = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util", "signal"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json"] }
+include_dir = "0.7"
+form_urlencoded = "1"
+sha1_smol = "1"
+uuid = { version = "1", features = ["v4"] }
+unicode-normalization = "0.1"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Globalization", "Win32_System_SystemInformation"] }
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-tungstenite = "0.26"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

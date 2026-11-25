@@ -18,20 +18,16 @@ The editor is in Spanish or English and comes in three looks (Studio, Daylight, 
 
 ## What you need
 
-- Windows with the Discord desktop app open.
-- [Node.js](https://nodejs.org/) 22 or newer (the LTS download is fine).
+- Windows 10 or 11 with the Discord desktop app.
 - OBS (any recent version).
 
 ## Install
 
-Download this project (green **Code** button → *Download ZIP*, then unzip it, or `git clone https://github.com/kosmik-code/kosmik-voice`). Open a terminal in its folder and run:
+1. Download **`Kosmik-Voice_…_x64-setup.exe`** from the [latest release](https://github.com/kosmik-code/kosmik-voice/releases/latest) and run it. No admin rights needed.
+2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
+3. The editor opens in your browser. Kosmik Voice now lives in the tray, next to the clock: click its icon to open the editor again, right-click it to quit or to stop it starting with Windows.
 
-```powershell
-npm install
-npm start
-```
-
-Then open the editor at **<http://127.0.0.1:7429/editor/>**. Keep that terminal open while you stream; closing it stops the overlay.
+It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
 
 ## Set it up
 
@@ -63,11 +59,12 @@ Changes you save in the editor show up in OBS straight away; no need to refresh 
 
 ## Good to know
 
-- **Kosmik Voice must be running while you stream.** A desktop shortcut that runs `npm start` works well.
+- **Kosmik Voice must be running while you stream.** It starts with Windows and waits in the tray, so normally you don't have to think about it. If you quit it, open it again from the Start menu.
 - **Several overlays:** each preset has its own OBS address, so you can have a bottom row in one scene and a big grid in another.
 - **Moving it around in OBS:** set *Placement* to **Free box**. The source then only covers its people, so you can drag and resize it in OBS. *Room for* sets how many people the box is made for; if more join, everyone shrinks to fit. If you change the image size or the room later, update the width and height in OBS too.
 - **Positioning without a call:** add `?demo=1` to the end of the overlay address in OBS to see sample people while you place it.
-- **Updates:** when there's a new version, the editor shows a banner. Close the app, download the new version (or `git pull`) and start it again. Your settings and pictures in the `data` folder are kept.
+- **Updates:** when there's a new version, the tray menu shows *Install update* and the editor shows a banner with **Install now**. One click installs it and Kosmik Voice restarts by itself; your settings and pictures are kept, and OBS picks it up on its own.
+- **Your settings** live in `%APPDATA%\Kosmik Voice` (paste that into the Explorer address bar). Uninstalling keeps them unless you tick *Delete the application data*.
 - **The overlay stays blank in OBS?** Start Kosmik Voice before opening OBS, or tick *Refresh browser when scene becomes active* in the source's properties.
 
 ---
@@ -108,33 +105,58 @@ The secret and the tokens are stored in `data/secrets.json` and never sent to th
 | `?gallery=1` | editor | Opens the template gallery |
 | `?look=studio\|daylight\|pixel` | editor | Picks the editor look |
 
+### The app
+
+The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the editor opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The editor and overlay pages are built into the program. Data goes to `%APPDATA%\Kosmik Voice` (config, secrets, pictures, and `kosmik-voice.log`, replaced on each start). Opening it a second time just opens the editor. The Node.js version in this repository does exactly the same job and stays here for development; both use the same files and the same port, so run only one of them at a time.
+
+To move from the Node.js version to the app, quit the Node.js version and copy the contents of its `data` folder into `%APPDATA%\Kosmik Voice`. Your OBS sources keep working, since the address is the same.
+
 ### Configuration
 
-Everything is edited in the browser and stored in `data/config.json`. The file is validated before it's written: invalid values are rejected with the field that's wrong, and the previous file stays intact. If the file gets corrupted by hand, it's moved aside to `config.broken-<time>.json` and defaults are loaded. Uploaded images live in `data/assets/`; an image still used by a user can't be deleted.
+Everything is edited in the browser and stored in `config.json` in the data folder (`data/` when running from source). The file is validated before it's written: invalid values are rejected with the field that's wrong, and the previous file stays intact. If the file gets corrupted by hand, it's moved aside to `config.broken-<time>.json` and defaults are loaded. Uploaded images live in `data/assets/`; an image still used by a user can't be deleted.
 
-Environment variables: `KV_PORT` (default `7429`), `KV_DATA_DIR` (default `./data`) and `KV_UPDATE_CHECK` (`0` turns off the update check).
+Environment variables (app and source): `KV_PORT` (default `7429`), `KV_DATA_DIR` (default `%APPDATA%\Kosmik Voice` for the app, `./data` from source) and `KV_UPDATE_CHECK` (`0` turns off the update check). The app also takes `KV_PUBLIC_DIR=<folder>` to serve the pages from disk while developing.
 
 ### Updates
 
-On every start, Kosmik Voice checks in the background whether this repository has something newer than your copy. If it does, the console says so and the editor shows a banner linking to the changes. *Hide* dismisses it until a newer update appears. Without a network connection nothing is shown and the app works as usual. A copy downloaded as a zip (no `.git` folder) compares the `version` in `package.json` instead. After an update, open overlays reload themselves.
+The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-voice/releases/latest) shortly after it starts and then every 6 hours, with Tauri's updater: it reads the release's `latest.json`, and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). Installing runs the installer with a progress bar only, then starts the app again. When running from source, Kosmik Voice instead checks in the background whether this repository has something newer than your copy. If it does, the console says so and the editor shows a banner linking to the changes. *Hide* dismisses it until a newer update appears. Without a network connection nothing is shown and the app works as usual. A copy downloaded as a zip (no `.git` folder) compares the `version` in `package.json` instead. After an update, open overlays reload themselves.
 
 ### Security
 
 - The server listens on `127.0.0.1` only.
-- The only outbound request besides Discord is the update check: one anonymous call to the GitHub API per start, carrying only the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
+- The only outbound request besides Discord is the update check: the app downloads the release's `latest.json` from GitHub every few hours, sending nothing about you; from source it's one anonymous GitHub API call per start, carrying the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
 - Every request must carry a `127.0.0.1:<port>` or `localhost:<port>` Host header, which blocks DNS rebinding.
 - Every change needs a same-origin `Origin` header, and JSON bodies need `Content-Type: application/json`, so other websites can't change your config.
 - The WebSocket refuses foreign origins, so other websites can't read who is in your call.
 - Uploads are checked by content (magic bytes), capped at 10 MB and renamed safely. Static routes refuse path traversal.
 
+### Run from source
+
+With [Node.js](https://nodejs.org/) 22 or newer: download this project (green **Code** button → *Download ZIP*, or `git clone https://github.com/kosmik-code/kosmik-voice`), open a terminal in its folder and run:
+
+```powershell
+npm install
+npm start
+```
+
+Then open the editor at **<http://127.0.0.1:7429/editor/>**. Keep that terminal open while you stream. Updates: `git pull` (or a new ZIP) and start it again; the `data` folder is kept.
+
 ### Development
 
 ```powershell
-npm test
+npm test                # editor logic, overlay model and the Node.js backend
+cd app
+cargo test              # the Rust backend (same cases, against a fake Discord pipe)
+$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\kosmik-voice.key"   # signs the update
+npx @tauri-apps/cli@2 build   # installer in app/target/release/bundle/nsis/
 ```
+
+Building the app needs [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` as a release (`.github/workflows/release.yml`); installed apps offer it from then on. The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
 
 | Path | Role |
 |---|---|
+| `app/src/` | The app: `ipc.rs`, `auth.rs`, `voice.rs`, `service.rs` (Discord), `config.rs`, `server.rs`, `update.rs`, `main.rs` (tray) and `updates.rs` (the app's updater) |
+| `app/tauri.conf.json`, `app/windows/hooks.nsh` | Installer settings; uninstall removes the autostart entry |
 | `src/discord/ipc.js` | Discord IPC framing, handshake and requests |
 | `src/discord/auth.js` | OAuth: AUTHORIZE → token exchange → AUTHENTICATE, refresh, secret store |
 | `src/discord/voice.js` | Reduces RPC voice events into a snapshot |

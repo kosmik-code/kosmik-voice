@@ -23,7 +23,7 @@ body {
 .update-banner { --edge: var(--ok); --hair: color-mix(in srgb, var(--ok) 45%, var(--line)); display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; color: var(--text); }
 .update-banner[hidden] { display: none; }
 .update-banner strong { color: var(--ok); }
-.update-banner button { margin-left: auto; }
+.update-banner button:first-of-type { margin-left: auto; }
 .errors strong { color: var(--bad); font-family: var(--font-label); }
 .errors ul { margin: 4px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; }
 

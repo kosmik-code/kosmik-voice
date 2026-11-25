@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Kosmik Voice: someone talking (teal), with the talking glow ring (amber). -->
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="#1b1b23"/>
+  <circle cx="512" cy="512" r="318" fill="none" stroke="#f3b562" stroke-width="84"/>
+  <circle cx="512" cy="512" r="186" fill="#5ec8b3"/>
+</svg>

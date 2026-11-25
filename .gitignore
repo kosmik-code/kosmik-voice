@@ -1,3 +1,5 @@
 node_modules/
 data/
 *.log
+app/target/
+app/gen/
