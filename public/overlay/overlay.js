@@ -185,6 +185,9 @@ function checkBuild(build) {
 
 function onMessage(msg) {
   if ((msg.type === "hello" || msg.type === "build") && checkBuild(msg.build)) return;
+  // Hidden from the tray, the hotkey or the editor: fade out, keep rendering underneath.
+  if (msg.type === "hello" || msg.type === "hidden") document.body.classList.toggle("kv-hidden", msg.hidden === true);
+  if (msg.type === "hidden") return;
   if (msg.type === "hello") state = { config: msg.config, voice: msg.voice, status: msg.status };
   else if (msg.type === "config") state.config = msg.config;
   else if (msg.type === "voice") state.voice = msg.voice;

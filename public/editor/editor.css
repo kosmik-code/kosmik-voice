@@ -24,6 +24,10 @@ body {
 .update-banner[hidden] { display: none; }
 .update-banner strong { color: var(--ok); }
 .update-banner button:first-of-type { margin-left: auto; }
+.hidden-banner { --edge: var(--warn); --hair: color-mix(in srgb, var(--warn) 45%, var(--line)); display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; color: var(--text); }
+.hidden-banner[hidden] { display: none; }
+.hidden-banner strong { color: var(--warn); }
+.hidden-banner button { margin-left: auto; }
 .errors strong { color: var(--bad); font-family: var(--font-label); }
 .errors ul { margin: 4px 0 0; padding-left: 18px; max-height: 120px; overflow: auto; }
 
@@ -160,6 +164,17 @@ body {
 /* "Add to OBS" card: the numbers people type into OBS are the point, so they are big. */
 .obs { --edge: var(--accent); --hair: color-mix(in srgb, var(--accent) 50%, var(--line)); }
 .obs-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.obs-hand { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--muted); }
+
+/* Hotkeys: the keys as key caps, with Change / Default / Off next to them. */
+.hk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0; }
+.hk-label { font-weight: 600; min-width: 9em; }
+.hk-keys { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.hk-keys kbd { font: 600 13px var(--mono); padding: 3px 8px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); background: var(--raised); color: var(--heading); }
+.hk-keys .kbd-plus { color: var(--muted); }
+.hk-keys.capturing { padding: 0 10px; border: 1px dashed var(--accent); border-radius: var(--radius-sm); color: var(--accent-text); outline: none; }
+.hk-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.hk-error { flex-basis: 100%; margin: 0; }
 button.big { padding: 10px 20px; font-size: 15px; }
 .obs-size { display: flex; gap: 16px; }
 .obs-dim { display: flex; flex-direction: column; align-items: flex-start; }

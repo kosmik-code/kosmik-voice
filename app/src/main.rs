@@ -6,14 +6,18 @@
 
 mod updates;
 
+use kosmik_voice::hotkeys::{self, Hotkeys};
 use kosmik_voice::{App, Options, StartError, log, start};
+use std::sync::{Arc, Mutex};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
 struct Text {
+    hide: &'static str,
     open: &'static str,
     autostart: &'static str,
     quit: &'static str,
@@ -31,6 +35,7 @@ fn spanish() -> bool {
 fn text() -> Text {
     if spanish() {
         Text {
+            hide: "Ocultar el overlay",
             open: "Abrir el editor",
             autostart: "Iniciar con Windows",
             quit: "Salir",
@@ -41,6 +46,7 @@ fn text() -> Text {
         }
     } else {
         Text {
+            hide: "Hide the overlay",
             open: "Open the editor",
             autostart: "Start with Windows",
             quit: "Quit",
@@ -68,6 +74,65 @@ fn status_label(state: &str) -> &'static str {
         (_, false) => "Discord: needs attention, open the editor",
         (_, true) => "Discord: revisá el editor",
     }
+}
+
+/// "Hide the overlay (Ctrl+Alt+Shift+H)", or without the keys when it has none.
+fn with_key(label: &str, key: &str) -> String {
+    if key.is_empty() { label.to_string() } else { format!("{label} ({key})") }
+}
+
+/// Hotkeys registered with Windows right now, and what each one does.
+type Bound = Arc<Mutex<Vec<(Shortcut, String)>>>;
+
+/// (Re)registers the chosen hotkeys, telling the editor about any Windows refuses (another program has
+/// that combination). Runs on the main thread, where the plugin's hotkey window lives.
+fn bind_hotkeys(app: &AppHandle, hk: &Hotkeys, bound: &Bound) {
+    let gs = app.global_shortcut();
+    let mut b = bound.lock().unwrap_or_else(|e| e.into_inner());
+    for (s, _) in b.drain(..) {
+        let _ = gs.unregister(s);
+    }
+    if hk.paused() {
+        return; // the editor is waiting for a new combination
+    }
+    for (id, key) in hk.keys() {
+        if key.is_empty() {
+            hk.set_error(&id, None);
+            continue;
+        }
+        let Ok(s) = hotkeys::plugin_form(&key).parse::<Shortcut>() else {
+            hk.set_error(&id, Some("unsupported_key"));
+            continue;
+        };
+        match gs.register(s) {
+            Ok(()) => {
+                hk.set_error(&id, None);
+                b.push((s, id));
+            }
+            Err(e) => {
+                log::line(format!("hotkey {key} unavailable (another program uses it?): {e}"));
+                hk.set_error(&id, Some("taken"));
+            }
+        }
+    }
+}
+
+/// Registers now, and again whenever the editor changes a key or pauses them.
+fn watch_hotkeys(app: AppHandle, hk: Arc<Hotkeys>, bound: Bound) {
+    bind_hotkeys(&app, &hk, &bound);
+    let (mut keys, mut paused) = (hk.keys_watch(), hk.paused_watch());
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::select! {
+                r = keys.changed() => if r.is_err() { return },
+                r = paused.changed() => if r.is_err() { return },
+            }
+            keys.borrow_and_update();
+            paused.borrow_and_update();
+            let (a, h, b) = (app.clone(), hk.clone(), bound.clone());
+            let _ = app.run_on_main_thread(move || bind_hotkeys(&a, &h, &b));
+        }
+    });
 }
 
 fn message_box(msg: &str) {
@@ -121,6 +186,8 @@ fn main() {
     let autostarted = args.iter().any(|a| a == "--autostart");
     opts.app_updater = opts.update_check;
 
+    // Ran as this app before? (Only the app writes this log; the Node.js version doesn't.)
+    let ran_before = opts.data_dir.join("kosmik-voice.log").exists();
     let rt = runtime();
     tauri::async_runtime::set(rt.handle().clone());
     let port = opts.port;
@@ -148,17 +215,40 @@ fn main() {
             app.manage(started.server.clone());
 
             let launcher = app.autolaunch();
-            // First run: start with Windows, so the overlay is there whenever OBS is.
-            // Already on: write it again, so it follows the program if it was installed somewhere else.
-            if started.fresh || launcher.is_enabled().unwrap_or(false) {
+            // First run of the app (even with settings copied over from the Node.js version): start with
+            // Windows, so the overlay is there whenever OBS is. Already on: write it again, so it follows the
+            // program if it was installed somewhere else. Turned off stays off.
+            let marker = started.data_dir.join("app-first-run.done");
+            if (!marker.exists() && !ran_before) || launcher.is_enabled().unwrap_or(false) {
                 let _ = launcher.enable();
             }
+            let _ = std::fs::write(&marker, "");
             let status = MenuItem::with_id(app, "status", status_label(&started.discord.status().state), false, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", t.open, true, None::<&str>)?;
+            let hide = CheckMenuItem::with_id(app, "hide", with_key(t.hide, &started.hotkeys.key("hide")), true, started.server.hidden(), None::<&str>)?;
             let auto = CheckMenuItem::with_id(app, "autostart", t.autostart, true, launcher.is_enabled().unwrap_or(false), None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", t.quit, true, None::<&str>)?;
             let sep = || PredefinedMenuItem::separator(app);
-            let menu = Menu::with_items(app, &[&open, &sep()?, &status, &sep()?, &auto, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &sep()?, &status, &hide, &sep()?, &auto, &quit])?;
+
+            // The hide hotkey (Ctrl+Alt+Shift+H unless changed in the editor) hides every overlay at once and
+            // brings them back, also from a Stream Deck's hotkey button.
+            let bound: Bound = Arc::new(Mutex::new(Vec::new()));
+            let (srv, b) = (started.server.clone(), bound.clone());
+            app.handle().plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(move |_app, shortcut, event| {
+                        if event.state() != ShortcutState::Pressed {
+                            return;
+                        }
+                        let action = b.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(s, _)| s == shortcut).map(|(_, a)| a.clone());
+                        if action.as_deref() == Some("hide") {
+                            srv.set_hidden(!srv.hidden());
+                        }
+                    })
+                    .build(),
+            )?;
+            watch_hotkeys(app.handle().clone(), started.hotkeys.clone(), bound);
             // An "Install update" line joins the top of this menu when there is one.
             let updates = updates::Updates::new(
                 app.handle().clone(),
@@ -173,6 +263,7 @@ fn main() {
             // Restarted by an update: the editor that started it is still open and reloads by itself.
             let updated = std::fs::remove_file(started.data_dir.join(updates::UPDATED_FLAG)).is_ok();
 
+            let menu_srv = started.server.clone();
             let tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().cloned().ok_or("no app icon")?)
                 .tooltip("Kosmik Voice")
@@ -186,6 +277,7 @@ fn main() {
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "open" => open_editor(app),
                     "update" => updates.install(),
+                    "hide" => menu_srv.set_hidden(!menu_srv.hidden()),
                     "autostart" => {
                         let l = app.autolaunch();
                         let on = l.is_enabled().unwrap_or(false);
@@ -197,13 +289,29 @@ fn main() {
                 })
                 .build(app)?;
 
-            // Keep the status line and tooltip in step with Discord.
+            // Keep the status line, the "hidden" tick and the tooltip in step with Discord and hiding
+            // (which the editor can change too).
             let mut watch = started.discord.status_watch();
+            let mut hidden = started.server.hidden_watch();
+            let mut keys = started.hotkeys.keys_watch();
+            let hide_text = t.hide;
+            let hidden_text = if spanish() { "overlay oculto" } else { "overlay hidden" };
             tauri::async_runtime::spawn(async move {
-                while watch.changed().await.is_ok() {
+                loop {
                     let label = status_label(&watch.borrow_and_update().state);
+                    let off = *hidden.borrow_and_update();
+                    let key = keys.borrow_and_update().iter().find(|(a, _)| a == "hide").map(|(_, k)| k.clone()).unwrap_or_default();
+                    let _ = hide.set_text(with_key(hide_text, &key));
                     let _ = status.set_text(label);
-                    let _ = tray.set_tooltip(Some(format!("Kosmik Voice · {label}")));
+                    // Set every time: Windows ticks or unticks a clicked item by itself.
+                    let _ = hide.set_checked(off);
+                    let tip = if off { format!("Kosmik Voice · {label} · {hidden_text}") } else { format!("Kosmik Voice · {label}") };
+                    let _ = tray.set_tooltip(Some(tip));
+                    tokio::select! {
+                        r = watch.changed() => if r.is_err() { return },
+                        r = hidden.changed() => if r.is_err() { return },
+                        r = keys.changed() => if r.is_err() { return },
+                    }
                 }
             });
 

@@ -41,6 +41,10 @@ const S = {
   discordMsg: null, // { tone, key }
   update: null, // startup update check result from the server (src/update.js)
   serverVersion: null, // the app version from the first hello; a new one after an update reloads the page
+  hidden: false, // overlays hidden from the tray or the hotkey
+  hotkeys: null, // [{ id, key, default, error }] from the app; null = no hotkeys (Node.js version)
+  hkCapture: null, // action id waiting for a new key combination
+  hkError: null, // why the last combination was refused
 };
 const UPDATE_DISMISS_KEY = "kv.updateDismissed";
 
@@ -75,6 +79,7 @@ function applyLanguage(lang) {
   $("#pv-canvas").replaceChildren(...CANVASES.map((c) => h("option", { value: c.value, text: c.label })));
   window.KosmikUI?.mountLooks($("#looks"), { studio: t("look.studio"), daylight: t("look.daylight"), pixel: t("look.pixel") });
   if (S.update) renderUpdate();
+  renderHidden();
 }
 
 /** ES/EN switch: re-render everything in place; the draft, dirty state and typed Discord fields survive. */
@@ -442,7 +447,7 @@ function goTo(tab, then) {
 const STEP_ACTIONS = {
   discord: ["ed.steps.goDiscord", () => goTo("discord", () => $("#discord-id")?.focus())],
   preset: ["ed.steps.pickTemplate", () => goTo("presets", openGallery)],
-  obs: ["ed.steps.copyObs", () => goTo("presets", () => $("#copy-obs")?.focus())],
+  obs: ["ed.steps.copyObs", () => goTo("presets", () => $("#add-obs")?.focus())],
 };
 
 function renderSteps() {
@@ -897,17 +902,42 @@ async function copyForObs(pr) {
   else toast(t("ed.obs.copiedUnsaved", { width: o.width, height: o.height }), "warn");
 }
 
+const OBS_ERRORS = new Set(["obs_not_found", "obs_off", "obs_closed", "obs_auth"]);
+
+/** Creates (or updates) the Browser source in OBS's current scene through OBS's WebSocket server. */
+async function addToObs(pr, button) {
+  const o = obsSetup(pr, location.origin, S.draft);
+  if (!S.base.presets.some((p) => p.id === pr.id)) return toast(t("ed.obs.unsaved"), "warn");
+  button.disabled = true;
+  const r = await api("/api/obs/add", { method: "POST", body: { preset: pr.id, width: o.width, height: o.height } }).catch(() => ({ ok: false, status: 0, data: null }));
+  button.disabled = false;
+  const err = r.data?.error;
+  if (r.ok) {
+    setFlag("obsCopied", true);
+    const key = r.data.result === "created" ? "ed.obs.added" : r.data.addedToScene ? "ed.obs.updatedAdded" : "ed.obs.updated";
+    return toast(t(key, { name: r.data.name, scene: r.data.scene, width: o.width, height: o.height }));
+  }
+  if (err === "unknown_preset") return toast(t("ed.obs.unsaved"), "warn");
+  if (OBS_ERRORS.has(err)) return toast(t(`ed.obs.err.${err}`), "warn");
+  // The Node.js version has no such route: it answers 404.
+  if (r.status === 404) return toast(t("ed.obs.err.unsupported"), "warn");
+  toast(t("ed.obs.err.failed", { message: r.data?.message ?? t("ed.obs.err.noAnswer") }), "warn");
+}
+
 function obsCard(pr, saved) {
   const o = obsSetup(pr, location.origin, S.draft);
   return h("div", { class: "card obs", id: "preset-urls" },
     h("h2", { text: t("ed.obs.title") }),
     h("div", { class: "obs-row" },
-      h("button", { type: "button", class: "primary big", id: "copy-obs", onclick: () => copyForObs(preset()), text: t("ed.obs.copy") }),
+      h("button", { type: "button", class: "primary big", id: "add-obs", title: t("ed.obs.addTitle"), onclick: (e) => addToObs(preset(), e.currentTarget), text: t("ed.obs.add") }),
       h("div", { class: "obs-size", "aria-label": t("ed.obs.sizeAria", { width: o.width, height: o.height }) },
         h("span", { class: "obs-dim" }, h("small", { text: t("ed.obs.width") }), h("strong", { text: o.width })),
         h("span", { class: "obs-dim" }, h("small", { text: t("ed.obs.height") }), h("strong", { text: o.height })),
       ),
     ),
+    h("p", { class: "hint", text: t("ed.obs.addHint") }),
+    h("p", { class: "obs-hand" }, h("span", { text: t("ed.obs.orHand") }), " ",
+      h("button", { type: "button", class: "small", id: "copy-obs", onclick: () => copyForObs(preset()), text: t("ed.obs.copy") })),
     h("ol", { class: "steps numbered compact" },
       h("li", {}, parts("ed.obs.step1", { sources: h("strong", { text: t("ed.obs.sources") }), plus: h("strong", { text: "+" }), browser: h("strong", { text: t("ed.obs.browser") }) })),
       h("li", {}, parts("ed.obs.step2", { url: h("strong", { text: "URL" }) })),
@@ -922,6 +952,113 @@ function obsCard(pr, saved) {
       h("small", { class: "hint", text: t("ed.obs.demoHint") }),
     ),
   );
+}
+
+// ---------------------------------------------------------------- hotkeys (the installed app only)
+
+const hotkey = (id) => S.hotkeys?.find((k) => k.id === id) ?? null;
+
+/** "Ctrl+Alt+Shift+H" as key caps; "—" when there's none. */
+function keyCaps(key) {
+  if (!key) return [h("span", { class: "hint", text: t("hk.none") })];
+  return key.split("+").flatMap((k, i) => (i ? [h("span", { class: "kbd-plus", text: "+" }), h("kbd", { text: k })] : [h("kbd", { text: k })]));
+}
+
+/** The combination a keydown makes, in the app's form, or null for keys hotkeys can't use. */
+function comboFromEvent(e) {
+  let m;
+  let key = null;
+  if ((m = /^Key([A-Z])$/.exec(e.code))) key = m[1];
+  else if ((m = /^Digit(\d)$/.exec(e.code))) key = m[1];
+  else if ((m = /^F(\d{1,2})$/.exec(e.code)) && +m[1] >= 1 && +m[1] <= 24) key = `F${m[1]}`;
+  if (!key) return null;
+  return [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", key].filter(Boolean).join("+");
+}
+
+async function setHotkey(id, key) {
+  const r = await api("/api/hotkeys", { method: "PUT", body: { id, key } }).catch(() => ({ ok: false, data: null }));
+  if (r.ok) {
+    S.hotkeys = r.data;
+    S.hkError = null;
+    await endCapture();
+    return true;
+  }
+  S.hkError = r.data?.error ?? "failed";
+  renderHotkeys();
+  return false;
+}
+
+async function startCapture(id) {
+  S.hkCapture = id;
+  S.hkError = null;
+  renderHotkeys();
+  // Let go of the hotkeys meanwhile, so even the current combination reaches this page.
+  await api("/api/hotkeys/pause", { method: "POST", body: { paused: true } }).catch(() => {});
+  $("#hk-capture")?.focus();
+}
+
+async function endCapture() {
+  const was = S.hkCapture;
+  S.hkCapture = null;
+  renderHotkeys();
+  if (was) await api("/api/hotkeys/pause", { method: "POST", body: { paused: false } }).catch(() => {});
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!S.hkCapture) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape") return endCapture();
+  if (["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"].includes(e.key)) return; // wait for the real key
+  const combo = comboFromEvent(e);
+  if (!combo) {
+    S.hkError = "unsupported_key";
+    return renderHotkeys();
+  }
+  setHotkey(S.hkCapture, combo);
+}, true);
+
+/** One hotkey: its keys, and Change / Default / Off. */
+function hotkeyRow(id, label) {
+  const k = hotkey(id);
+  if (!k) return null;
+  const capturing = S.hkCapture === id;
+  const err = capturing ? S.hkError : k.error;
+  return h("div", { class: "hk-row" },
+    h("span", { class: "hk-label", text: label }),
+    capturing
+      ? h("span", { class: "hk-keys capturing", id: "hk-capture", tabindex: "-1", role: "status", text: t("hk.press") })
+      : h("span", { class: "hk-keys" }, ...keyCaps(k.key)),
+    h("span", { class: "hk-actions" },
+      capturing
+        ? h("button", { type: "button", class: "small", text: t("hk.cancel"), onclick: () => endCapture() })
+        : h("button", { type: "button", class: "small", text: t("hk.change"), onclick: () => startCapture(id) }),
+      !capturing && k.key !== k.default ? h("button", { type: "button", class: "small", text: t("hk.default", { key: k.default }), onclick: () => setHotkey(id, k.default) }) : null,
+      !capturing && k.key ? h("button", { type: "button", class: "small", text: t("hk.off"), onclick: () => setHotkey(id, "") }) : null,
+    ),
+    err ? h("p", { class: "msg tone-bad hk-error", text: t(`hk.err.${err}`) }) : null,
+  );
+}
+
+/** "Hide the overlay" card: the hotkey and a button for doing it from here. */
+function hotkeyCard() {
+  if (!S.hotkeys) return h("div", { id: "hotkeys-card", hidden: true });
+  return h("div", { class: "card hk", id: "hotkeys-card" },
+    h("h2", { text: t("hk.hide.title") }),
+    h("p", { class: "hint", text: t("hk.hide.hint") }),
+    hotkeyRow("hide", t("hk.hide.label")),
+    h("p", { class: "hint", text: t("hk.anywhere") }),
+    h("button", { type: "button", class: S.hidden ? "primary" : "", text: t(S.hidden ? "hk.hide.showNow" : "hk.hide.now"), onclick: async (e) => {
+      const button = e.currentTarget;
+      button.disabled = true;
+      const r = await api("/api/overlay/hidden", { method: "POST", body: { hidden: !S.hidden } }).catch(() => ({ ok: false }));
+      if (!r.ok) button.disabled = false;
+    } }),
+  );
+}
+
+function renderHotkeys() {
+  $("#hotkeys-card")?.replaceWith(hotkeyCard());
 }
 
 const isAdvanced = (p) => {
@@ -1000,6 +1137,7 @@ function renderPresets() {
       ),
     ),
     obsCard(pr, saved),
+    hotkeyCard(),
     h("details", { class: "card advanced", open: S.advancedOpen || advErrors, ontoggle: (e) => (S.advancedOpen = e.target.open) },
       h("summary", { text: t("ed.advanced") }),
       h("p", { class: "hint", text: t("ed.advancedHint") }),
@@ -1420,7 +1558,37 @@ function renderUpdate() {
   );
 }
 
+/** Banner while the overlays are hidden (tray, hotkey), so a hidden overlay is never a mystery. */
+function renderHidden() {
+  const box = $("#hidden-note");
+  box.hidden = !S.hidden;
+  if (!S.hidden) return box.replaceChildren();
+  const key = hotkey("hide")?.key;
+  box.replaceChildren(
+    h("strong", { text: t("ed.hidden.title") }),
+    h("span", { text: key ? t("ed.hidden.text", { key }) : t("ed.hidden.textNoKey") }),
+    h("button", { type: "button", class: "small primary", text: t("ed.hidden.show"), onclick: async (e) => {
+      const button = e.currentTarget;
+      button.disabled = true;
+      const r = await api("/api/overlay/hidden", { method: "POST", body: { hidden: false } }).catch(() => ({ ok: false }));
+      if (!r.ok) button.disabled = false;
+    } }),
+  );
+}
+
 function onMessage(msg) {
+  if (msg.type === "hello" || msg.type === "hotkeys") {
+    S.hotkeys = Array.isArray(msg.hotkeys) ? msg.hotkeys : null;
+    if (!S.hkCapture) renderHotkeys();
+    renderHidden();
+    if (msg.type === "hotkeys") return;
+  }
+  if (msg.type === "hello" || msg.type === "hidden") {
+    S.hidden = msg.hidden === true;
+    renderHidden();
+    renderHotkeys();
+    if (msg.type === "hidden") return;
+  }
   if (msg.type === "hello" && msg.version) {
     // After an update the app restarts with new pages: load them (unless there are unsaved edits).
     if (S.serverVersion && msg.version !== S.serverVersion && !dirty()) return location.reload();

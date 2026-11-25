@@ -11,8 +11,9 @@ use futures_util::future::join_all;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{Notify, broadcast, mpsc, watch};
 
 const CHANNEL_EVENTS: [&str; 5] = ["VOICE_STATE_CREATE", "VOICE_STATE_UPDATE", "VOICE_STATE_DELETE", "SPEAKING_START", "SPEAKING_STOP"];
 
@@ -39,6 +40,14 @@ enum Cmd {
     Stop,
 }
 
+/// Cuts the wait between connection tries short (Discord was just seen starting).
+#[derive(Default)]
+struct Wake {
+    notify: Notify,
+    /// True only while waiting out the retry delay: a nudge never interrupts a try in progress.
+    between_tries: AtomicBool,
+}
+
 /// The server's view of the Discord service: current values, change events and restart.
 #[derive(Clone)]
 pub struct DiscordHandle {
@@ -46,6 +55,7 @@ pub struct DiscordHandle {
     voice: watch::Receiver<Value>,
     events: broadcast::Sender<ServiceEvent>,
     cmd: mpsc::UnboundedSender<Cmd>,
+    wake: Arc<Wake>,
 }
 
 impl DiscordHandle {
@@ -67,6 +77,13 @@ impl DiscordHandle {
     }
     pub fn stop(&self) {
         let _ = self.cmd.send(Cmd::Stop);
+    }
+    /// Discord is running but we aren't connected: try now instead of after the retry delay.
+    /// Only while it was "closed", so an error or a refused authorization is never retried faster.
+    pub fn nudge(&self) {
+        if self.status.borrow().state == "discord_closed" && self.wake.between_tries.load(Ordering::SeqCst) {
+            self.wake.notify.notify_one();
+        }
     }
 }
 
@@ -113,6 +130,7 @@ struct Service {
     out: Publisher,
     room: VoiceRoom,
     subscribed: Option<String>,
+    wake: Arc<Wake>,
 }
 
 /// A handle that is never connected: for tests of the server and for headless checks.
@@ -121,7 +139,7 @@ pub fn detached(status: Status, voice: Value) -> (DiscordHandle, DetachedControl
     let (voice_tx, voice_rx) = watch::channel(voice);
     let (events, _) = broadcast::channel(256);
     let (cmd, cmd_rx) = mpsc::unbounded_channel();
-    let handle = DiscordHandle { status: status_rx, voice: voice_rx, events: events.clone(), cmd };
+    let handle = DiscordHandle { status: status_rx, voice: voice_rx, events: events.clone(), cmd, wake: Arc::new(Wake::default()) };
     (handle, DetachedControls { out: Publisher { status: status_tx, voice: voice_tx, events }, cmd: cmd_rx })
 }
 
@@ -155,8 +173,9 @@ pub fn spawn(opts: ServiceOptions) -> DiscordHandle {
     let (voice_tx, voice_rx) = watch::channel(VoiceRoom::default().snapshot());
     let (events, _) = broadcast::channel(256);
     let (cmd, cmd_rx) = mpsc::unbounded_channel();
-    let handle = DiscordHandle { status: status_rx, voice: voice_rx, events: events.clone(), cmd };
-    let svc = Service { opts, out: Publisher { status: status_tx, voice: voice_tx, events }, room: VoiceRoom::default(), subscribed: None };
+    let wake = Arc::new(Wake::default());
+    let handle = DiscordHandle { status: status_rx, voice: voice_rx, events: events.clone(), cmd, wake: wake.clone() };
+    let svc = Service { opts, out: Publisher { status: status_tx, voice: voice_tx, events }, room: VoiceRoom::default(), subscribed: None, wake };
     tokio::spawn(svc.run(cmd_rx));
     handle
 }
@@ -201,14 +220,21 @@ impl Service {
                 None => {}
                 Some(End::Halt) => running = false,
                 Some(End::Retry) => {
+                    self.wake.between_tries.store(true, Ordering::SeqCst);
+                    let wake = self.wake.clone();
                     tokio::select! {
                         _ = tokio::time::sleep(self.opts.retry) => {}
+                        _ = wake.notify.notified() => {}
                         cmd = cmds.recv() => match cmd {
                             Some(Cmd::Restart(id)) => if let Some(id) = id { self.opts.client_id = id; },
                             Some(Cmd::Stop) => running = false,
-                            None => return,
+                            None => {
+                                self.wake.between_tries.store(false, Ordering::SeqCst);
+                                return;
+                            }
                         },
                     }
+                    self.wake.between_tries.store(false, Ordering::SeqCst);
                 }
             }
         }
@@ -229,7 +255,10 @@ impl Service {
     }
 
     async fn session(&mut self) -> End {
-        self.out.status("connecting", "");
+        // While Discord is closed, retries keep saying so instead of flickering through "connecting".
+        if self.out.current() != "discord_closed" {
+            self.out.status("connecting", "");
+        }
         let mut conn = match IpcClient::connect(&self.opts.client_id, &self.opts.pipe_paths, self.opts.timeout).await {
             Ok(c) => c,
             Err(e) => {
@@ -419,6 +448,24 @@ mod tests {
         let h = spawn(opts(&dir, vec![fake::pipe_name()], 30));
         let (statuses, _) = record(&h);
         wait_for(|| statuses.lock().unwrap().iter().filter(|s| s.state == "discord_closed").count() >= 2).await;
+        h.stop();
+    }
+
+    #[tokio::test]
+    async fn a_nudge_connects_as_soon_as_discord_appears_and_retries_stay_quiet() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("secrets.json"), json!({ "clientSecret": "s" }).to_string()).unwrap();
+        let pipe = fake::pipe_name();
+        let h = spawn(opts(&dir, vec![pipe.clone()], 60_000)); // next try only a minute away
+        let (statuses, _) = record(&h);
+        wait_for(|| h.status().state == "discord_closed").await;
+        statuses.lock().unwrap().clear(); // the first try says "connecting"; later ones shouldn't
+        h.nudge(); // Discord still closed: one quick try, still "discord_closed", no "connecting"
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(statuses.lock().unwrap().iter().all(|s| s.state == "discord_closed"), "{:?}", statuses.lock().unwrap());
+        let f = fake::start_on(pipe, Handlers::default()); // Discord opens
+        h.nudge();
+        wait_for(|| f.handshakes() == 1).await;
         h.stop();
     }
 

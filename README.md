@@ -25,7 +25,7 @@ The editor is in Spanish or English and comes in three looks (Studio, Daylight, 
 
 1. Download **`Kosmik-Voice_…_x64-setup.exe`** from the [latest release](https://github.com/kosmik-code/kosmik-voice/releases/latest) and run it. No admin rights needed.
 2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
-3. The editor opens in your browser. Kosmik Voice now lives in the tray, next to the clock: click its icon to open the editor again, right-click it to quit or to stop it starting with Windows.
+3. The editor opens in your browser. Kosmik Voice now lives in the tray, next to the clock: click its icon to open the editor again, right-click it to hide the overlay, quit, or stop it starting with Windows.
 
 It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
 
@@ -51,9 +51,10 @@ In **Presets**, pick a template, then change the style, size, position and anima
 
 ### 3. Add it to OBS
 
-1. Press **Copy for OBS**. Next to the button you'll see the width and height to use.
-2. In OBS: **Sources → + → Browser**. Paste the address and type that width and height.
-3. Join a voice call. That's it.
+1. With OBS open, press **Add it to OBS**. The overlay appears in the scene you're on, with the right size. (OBS's WebSocket server must be on: **Tools › WebSocket Server Settings › Enable WebSocket server**. Kosmik Voice finds its password by itself.)
+2. Join a voice call. That's it.
+
+Prefer doing it by hand, or OBS runs on another PC? Press **Copy for OBS**, then in OBS go to **Sources → + → Browser**, paste the address and type the width and height shown next to the button.
 
 Changes you save in the editor show up in OBS straight away; no need to refresh anything.
 
@@ -61,11 +62,13 @@ Changes you save in the editor show up in OBS straight away; no need to refresh 
 
 - **Kosmik Voice must be running while you stream.** It starts with Windows and waits in the tray, so normally you don't have to think about it. If you quit it, open it again from the Start menu.
 - **Several overlays:** each preset has its own OBS address, so you can have a bottom row in one scene and a big grid in another.
+- **Hide it for a moment:** **Ctrl+Alt+Shift+H** (or *Hide the overlay* in the tray menu) fades every overlay out, for a private call or a screen share. Press it again to bring them back. Change the keys (or turn the hotkey off) in **Presets › Hide the overlay**, which also has a button to do it from the editor. A Stream Deck's *Hotkey* action can press it for you. While it's hidden the editor says so, with a button to show it again.
+- **Pressing *Add it to OBS* again** doesn't make a copy: it updates the size of the source that's already there, and adds it to the current scene if it isn't in it yet.
 - **Moving it around in OBS:** set *Placement* to **Free box**. The source then only covers its people, so you can drag and resize it in OBS. *Room for* sets how many people the box is made for; if more join, everyone shrinks to fit. If you change the image size or the room later, update the width and height in OBS too.
 - **Positioning without a call:** add `?demo=1` to the end of the overlay address in OBS to see sample people while you place it.
 - **Updates:** when there's a new version, the tray menu shows *Install update* and the editor shows a banner with **Install now**. One click installs it and Kosmik Voice restarts by itself; your settings and pictures are kept, and OBS picks it up on its own.
 - **Your settings** live in `%APPDATA%\Kosmik Voice` (paste that into the Explorer address bar). Uninstalling keeps them unless you tick *Delete the application data*.
-- **The overlay stays blank in OBS?** Start Kosmik Voice before opening OBS, or tick *Refresh browser when scene becomes active* in the source's properties.
+- **The overlay stays blank in OBS?** Start Kosmik Voice before opening OBS, or tick *Refresh browser when scene becomes active* in the source's properties. When Discord restarts (it does for its own updates), the overlay is back about a second later.
 
 ---
 
@@ -73,7 +76,9 @@ Changes you save in the editor show up in OBS straight away; no need to refresh 
 
 ### How it connects
 
-Kosmik Voice talks to the Discord desktop client through **local RPC**, the same channel StreamKit uses. Discord only lets an application's owner and its testers use local RPC, which is why you register your own app. The overlay pages get updates from the local server over a WebSocket.
+Kosmik Voice talks to the Discord desktop client through **local RPC**, the same channel StreamKit uses. Discord only lets an application's owner and its testers use local RPC, which is why you register your own app. The overlay pages get updates from the local server over a WebSocket. While Discord is closed, the app checks every second whether it has started (reading the Windows process list) and connects right away when it has, instead of waiting for its next retry.
+
+*Add it to OBS* uses OBS's own WebSocket server (obs-websocket v5, built into OBS 28+), with the port and password read from OBS's settings on this PC (`%APPDATA%\obs-studio\plugin_config\obs-websocket\config.json`). It opens one short connection per press: it looks for a Browser source already showing that overlay (and updates its size), or creates one named *Kosmik Voice* in the current scene. Nothing else in OBS is touched, and the password never reaches the browser.
 
 About the redirect: without a registered redirect, Discord answers the authorization with `Missing "redirect_uri" in request`. The app must not send a redirect itself, because Discord rejects that with `Redirect URI cannot be used in the RPC OAuth2 Authorization flow`. If authorization fails, the app stops retrying, so Discord doesn't show one popup after another. The raw error is under *Technical details* in the Discord tab. Fix the cause, then press **Save and connect** to retry.
 
@@ -107,7 +112,7 @@ The secret and the tokens are stored in `data/secrets.json` and never sent to th
 
 ### The app
 
-The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the editor opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The editor and overlay pages are built into the program. Data goes to `%APPDATA%\Kosmik Voice` (config, secrets, pictures, and `kosmik-voice.log`, replaced on each start). Opening it a second time just opens the editor. The Node.js version in this repository does exactly the same job and stays here for development; both use the same files and the same port, so run only one of them at a time.
+The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the editor opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The editor and overlay pages are built into the program. Data goes to `%APPDATA%\Kosmik Voice` (config, secrets, pictures, `hotkeys.json`, and `kosmik-voice.log`, replaced on each start). Opening it a second time just opens the editor. The Node.js version in this repository does exactly the same job and stays here for development; both use the same files and the same port, so run only one of them at a time.
 
 To move from the Node.js version to the app, quit the Node.js version and copy the contents of its `data` folder into `%APPDATA%\Kosmik Voice`. Your OBS sources keep working, since the address is the same.
 
@@ -124,7 +129,7 @@ The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik
 ### Security
 
 - The server listens on `127.0.0.1` only.
-- The only outbound request besides Discord is the update check: the app downloads the release's `latest.json` from GitHub every few hours, sending nothing about you; from source it's one anonymous GitHub API call per start, carrying the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
+- Besides Discord and, when you press *Add it to OBS*, OBS on this PC, the only outbound request is the update check: the app downloads the release's `latest.json` from GitHub every few hours, sending nothing about you; from source it's one anonymous GitHub API call per start, carrying the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
 - Every request must carry a `127.0.0.1:<port>` or `localhost:<port>` Host header, which blocks DNS rebinding.
 - Every change needs a same-origin `Origin` header, and JSON bodies need `Content-Type: application/json`, so other websites can't change your config.
 - The WebSocket refuses foreign origins, so other websites can't read who is in your call.
@@ -155,7 +160,7 @@ Building the app needs [Rust](https://rustup.rs/) and the Visual Studio C++ Buil
 
 | Path | Role |
 |---|---|
-| `app/src/` | The app: `ipc.rs`, `auth.rs`, `voice.rs`, `service.rs` (Discord), `config.rs`, `server.rs`, `update.rs`, `main.rs` (tray) and `updates.rs` (the app's updater) |
+| `app/src/` | The app: `ipc.rs`, `auth.rs`, `voice.rs`, `service.rs` (Discord), `procs.rs` (spots Discord starting), `obs.rs` (*Add it to OBS*), `config.rs`, `server.rs`, `update.rs`, `main.rs` (tray, hotkey) and `updates.rs` (the app's updater) |
 | `app/tauri.conf.json`, `app/windows/hooks.nsh` | Installer settings; uninstall removes the autostart entry |
 | `src/discord/ipc.js` | Discord IPC framing, handshake and requests |
 | `src/discord/auth.js` | OAuth: AUTHORIZE → token exchange → AUTHENTICATE, refresh, secret store |

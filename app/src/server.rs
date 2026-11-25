@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use unicode_normalization::UnicodeNormalization;
 
 const MAX_JSON: usize = 1024 * 1024;
@@ -229,6 +229,11 @@ struct AppState {
     tx: broadcast::Sender<Arc<str>>,
     hosts: HashSet<String>,
     origins: HashSet<String>,
+    port: u16,
+    /// Overlays hidden from the tray, a hotkey or the editor. Not saved: a restart shows them again.
+    hidden: watch::Sender<bool>,
+    find_obs: crate::obs::FindObs,
+    hotkeys: Arc<crate::hotkeys::Hotkeys>,
 }
 
 impl AppState {
@@ -261,10 +266,19 @@ impl AppState {
         v
     }
 
+    fn set_hidden(&self, on: bool) {
+        if self.hidden.send_replace(on) != on {
+            crate::log::line(if on { "Overlays hidden" } else { "Overlays shown again" });
+            self.broadcast(json!({ "type": "hidden", "hidden": on }));
+        }
+    }
+
     fn hello(&self) -> Value {
         json!({
             "type": "hello",
             "version": crate::VERSION,
+            "hidden": *self.hidden.borrow(),
+            "hotkeys": self.hotkeys.view(),
             "build": *self.build.lock().unwrap_or_else(|e| e.into_inner()),
             "update": *self.update.lock().unwrap_or_else(|e| e.into_inner()),
             "config": self.current_config(),
@@ -408,6 +422,56 @@ async fn api(st: Arc<AppState>, req: Request) -> Res {
                 _ => Err(HttpError::new(409, "no update to install")),
             }
         }
+        ("POST", "/api/overlay/hidden") => {
+            let body = read_json(req).await?;
+            let Some(on) = body["hidden"].as_bool() else { return Err(HttpError::new(400, "hidden must be true or false")) };
+            st.set_hidden(on);
+            Ok(json_reply(200, &json!({ "hidden": on })))
+        }
+        ("PUT", "/api/hotkeys") => {
+            let body = read_json(req).await?;
+            let (id, key) = (body["id"].as_str().unwrap_or(""), body["key"].as_str().unwrap_or(""));
+            match st.hotkeys.set(id, key) {
+                Ok(_) => Ok(json_reply(200, &st.hotkeys.view())),
+                Err("io") => Err(HttpError::internal("could not save hotkeys.json")),
+                Err(code) => Err(HttpError::new(400, code)),
+            }
+        }
+        // While the editor waits for a new combination, the hotkeys are let go of, so even the
+        // current one reaches the page.
+        ("POST", "/api/hotkeys/pause") => {
+            let body = read_json(req).await?;
+            let Some(on) = body["paused"].as_bool() else { return Err(HttpError::new(400, "paused must be true or false")) };
+            st.hotkeys.pause(on);
+            Ok(json_reply(200, &json!({ "paused": on })))
+        }
+        ("POST", "/api/obs/add") => {
+            let body = read_json(req).await?;
+            let id = body["preset"].as_str().unwrap_or("").to_string();
+            let size = |k: &str| body[k].as_u64().filter(|n| (1..=16384).contains(n)).map(|n| n as u32);
+            let (Some(width), Some(height)) = (size("width"), size("height")) else {
+                return Err(HttpError::new(400, "width and height must be whole numbers from 1 to 16384"));
+            };
+            // Only saved presets: an unsaved one has no overlay page yet.
+            let config = st.current_config();
+            let Some(preset) = config["presets"].as_array().into_iter().flatten().find(|p| p["id"] == json!(id)).cloned() else {
+                return Err(HttpError { status: StatusCode::NOT_FOUND, body: json!({ "error": "unknown_preset", "message": "save the preset first" }) });
+            };
+            let find = st.find_obs.clone();
+            let settings = tokio::task::spawn_blocking(move || find()).await.unwrap_or(None);
+            let request = crate::obs::AddRequest { port: st.port, preset_id: &id, preset_name: preset["name"].as_str().unwrap_or(""), width, height };
+            match crate::obs::add_to_obs(settings, request).await {
+                Ok(done) => {
+                    crate::log::line(format!("[obs] {} \"{}\" in scene \"{}\"", done["result"].as_str().unwrap_or(""), done["name"].as_str().unwrap_or(""), done["scene"].as_str().unwrap_or("")));
+                    Ok(json_reply(200, &done))
+                }
+                Err(e) => {
+                    crate::log::line(format!("[obs] Add to OBS: {}", e.message));
+                    let status = if e.code == "obs_failed" { StatusCode::BAD_GATEWAY } else { StatusCode::CONFLICT };
+                    Err(HttpError { status, body: json!({ "error": e.code, "message": e.message }) })
+                }
+            }
+        }
         ("POST", "/api/discord/logout") => {
             st.secrets
                 .update(|s| {
@@ -528,6 +592,8 @@ pub struct ServerOptions {
     pub config: ConfigStore,
     pub secrets: Arc<SecretStore>,
     pub discord: DiscordHandle,
+    pub find_obs: crate::obs::FindObs,
+    pub hotkeys: Arc<crate::hotkeys::Hotkeys>,
 }
 
 pub struct ServerHandle {
@@ -542,6 +608,20 @@ impl ServerHandle {
     pub fn set_update(&self, next: Value) {
         *self.state.update.lock().unwrap_or_else(|e| e.into_inner()) = next.clone();
         self.state.broadcast(json!({ "type": "update", "update": next }));
+    }
+
+    /// Hide (or show again) every overlay at once.
+    pub fn set_hidden(&self, on: bool) {
+        self.state.set_hidden(on);
+    }
+
+    pub fn hidden(&self) -> bool {
+        *self.state.hidden.borrow()
+    }
+
+    /// Follows hiding from any side (tray, hotkey, editor).
+    pub fn hidden_watch(&self) -> watch::Receiver<bool> {
+        self.state.hidden.subscribe()
     }
 
     pub fn set_installer(&self, install: Installer) {
@@ -584,6 +664,10 @@ pub async fn start_server(listener: TcpListener, opts: ServerOptions) -> std::io
         tx,
         hosts,
         origins,
+        port,
+        hidden: watch::channel(false).0,
+        find_obs: opts.find_obs,
+        hotkeys: opts.hotkeys,
     });
 
     let mut side_tasks = Vec::new();
@@ -601,6 +685,14 @@ pub async fn start_server(listener: TcpListener, opts: ServerOptions) -> std::io
                 }
                 Err(broadcast::error::RecvError::Closed) => return,
             }
+        }
+    }));
+    // Hotkey choices (and whether Windows accepted them) go out to the editor.
+    let st = state.clone();
+    let mut hk = state.hotkeys.changes();
+    side_tasks.push(tokio::spawn(async move {
+        while hk.changed().await.is_ok() {
+            st.broadcast(json!({ "type": "hotkeys", "hotkeys": st.hotkeys.view() }));
         }
     }));
     // While developing from a folder, edited overlay files reload open overlays.
@@ -656,6 +748,8 @@ mod tests {
         srv: ServerHandle,
         ctl: crate::service::DetachedControls,
         http: reqwest::Client,
+        /// Where this test's OBS is (None = not on this PC).
+        obs: Arc<Mutex<Option<crate::obs::ObsSettings>>>,
     }
 
     async fn setup() -> Ctx {
@@ -676,13 +770,23 @@ mod tests {
             json!({ "channel": { "id": "c1", "name": "General", "guildId": null }, "members": [] }),
         );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let obs: Arc<Mutex<Option<crate::obs::ObsSettings>>> = Arc::new(Mutex::new(None));
+        let slot = obs.clone();
         let srv = start_server(
             listener,
-            ServerOptions { data_dir: dir.path().to_path_buf(), public: PublicFiles::Disk(public.path().to_path_buf()), config, secrets, discord },
+            ServerOptions {
+                data_dir: dir.path().to_path_buf(),
+                public: PublicFiles::Disk(public.path().to_path_buf()),
+                config,
+                secrets,
+                discord,
+                find_obs: Arc::new(move || slot.lock().unwrap().clone()),
+                hotkeys: crate::hotkeys::Hotkeys::load(dir.path(), &crate::HOTKEYS),
+            },
         )
         .await
         .unwrap();
-        Ctx { url: srv.url.clone(), dir, public, srv, ctl, http: reqwest::Client::new() }
+        Ctx { url: srv.url.clone(), dir, public, srv, ctl, http: reqwest::Client::new(), obs }
     }
 
     impl Ctx {
@@ -851,6 +955,68 @@ mod tests {
                 return serde_json::from_str(t.as_str()).unwrap();
             }
         }
+    }
+
+    #[tokio::test]
+    async fn hiding_reaches_every_overlay_and_new_ones_start_hidden() {
+        let c = setup().await;
+        let mut s = ws(&c, None).await.unwrap();
+        assert_eq!(next_json(&mut s).await["hidden"], false);
+        let mut hidden = c.srv.hidden_watch();
+        let r = c.json(Method::POST, "/api/overlay/hidden", &json!({ "hidden": true })).send().await.unwrap();
+        assert_eq!(r.status(), 200);
+        assert_eq!(next_json(&mut s).await, json!({ "type": "hidden", "hidden": true }));
+        assert!(hidden.has_changed().unwrap() && *hidden.borrow_and_update(), "the tray follows the editor");
+        let mut late = ws(&c, None).await.unwrap();
+        assert_eq!(next_json(&mut late).await["hidden"], true, "an overlay (re)loaded while hidden stays hidden");
+
+        c.srv.set_hidden(false); // tray or hotkey
+        assert_eq!(next_json(&mut s).await, json!({ "type": "hidden", "hidden": false }));
+        assert!(!c.srv.hidden());
+        assert_eq!(c.json(Method::POST, "/api/overlay/hidden", &json!({ "hidden": "yes" })).send().await.unwrap().status(), 400);
+        let foreign = c.http.post(format!("{}/api/overlay/hidden", c.url)).header("Origin", "https://evil.example").header("Content-Type", "application/json").body(r#"{"hidden":true}"#);
+        assert_eq!(foreign.send().await.unwrap().status(), 403);
+        assert!(!c.srv.hidden());
+    }
+
+    #[tokio::test]
+    async fn hotkeys_can_be_changed_and_the_editor_hears_about_it() {
+        let c = setup().await;
+        let mut s = ws(&c, None).await.unwrap();
+        assert_eq!(next_json(&mut s).await["hotkeys"], json!([{ "id": "hide", "key": "Ctrl+Alt+Shift+H", "default": "Ctrl+Alt+Shift+H", "error": null }]));
+        let put = |body: Value| c.json(Method::PUT, "/api/hotkeys", &body).send();
+        let r = put(json!({ "id": "hide", "key": "shift+h" })).await.unwrap();
+        assert_eq!((r.status().as_u16(), r.json::<Value>().await.unwrap()["error"].clone()), (400, json!("needs_modifier")));
+        let r = put(json!({ "id": "hide", "key": "alt+f9" })).await.unwrap();
+        assert_eq!(r.status(), 200);
+        assert_eq!(r.json::<Value>().await.unwrap()[0]["key"], "Alt+F9");
+        assert_eq!(next_json(&mut s).await["hotkeys"][0]["key"], "Alt+F9");
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(c.dir.path().join("hotkeys.json")).unwrap()).unwrap();
+        assert_eq!(saved, json!({ "hide": "Alt+F9" }));
+
+        let pause = c.json(Method::POST, "/api/hotkeys/pause", &json!({ "paused": true })).send().await.unwrap();
+        assert_eq!(pause.status(), 200);
+        let foreign = c.http.put(format!("{}/api/hotkeys", c.url)).header("Origin", "https://evil.example").header("Content-Type", "application/json").body(r#"{"id":"hide","key":""}"#);
+        assert_eq!(foreign.send().await.unwrap().status(), 403);
+    }
+
+    #[tokio::test]
+    async fn add_to_obs_creates_the_browser_source_and_explains_failures() {
+        let c = setup().await;
+        let add = |body: Value| c.json(Method::POST, "/api/obs/add", &body).send();
+        let r = add(json!({ "preset": "main", "width": 1920, "height": 1080 })).await.unwrap();
+        assert_eq!(r.status(), 409);
+        assert_eq!(r.json::<Value>().await.unwrap()["error"], "obs_not_found");
+
+        let obs = crate::obs::fake::start("pw", crate::obs::fake::World { program: "Live".into(), scenes: vec!["Live".into()], ..Default::default() }).await;
+        *c.obs.lock().unwrap() = Some(crate::obs::ObsSettings { enabled: true, url: obs.url.clone(), password: "pw".into() });
+        assert_eq!(add(json!({ "preset": "nope", "width": 10, "height": 10 })).await.unwrap().status(), 404);
+        assert_eq!(add(json!({ "preset": "main", "width": 0, "height": 10 })).await.unwrap().status(), 400);
+        let r = add(json!({ "preset": "main", "width": 1920, "height": 1080 })).await.unwrap();
+        assert_eq!(r.status(), 200);
+        assert_eq!(r.json::<Value>().await.unwrap(), json!({ "result": "created", "name": "Kosmik Voice", "scene": "Live", "addedToScene": true }));
+        let w = obs.world.lock().unwrap();
+        assert_eq!(w.inputs[0].2["url"], json!(format!("http://127.0.0.1:{}/overlay/main", c.srv.port)));
     }
 
     #[tokio::test]

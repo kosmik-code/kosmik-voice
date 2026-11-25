@@ -420,7 +420,11 @@ pub mod fake {
     }
 
     pub fn start(handlers: Handlers) -> FakeDiscord {
-        let pipe = pipe_name();
+        start_on(pipe_name(), handlers)
+    }
+
+    /// Serves on a given pipe name (Discord "opening" where a client already looks).
+    pub fn start_on(pipe: String, handlers: Handlers) -> FakeDiscord {
         let received = Arc::new(Mutex::new(Vec::new()));
         let peer_slot = Arc::new(Mutex::new(None));
         let first = ServerOptions::new().first_pipe_instance(true).create(&pipe).unwrap();

@@ -3,8 +3,11 @@
 
 pub mod auth;
 pub mod config;
+pub mod hotkeys;
 pub mod ipc;
 pub mod log;
+pub mod obs;
+pub mod procs;
 pub mod secrets;
 pub mod server;
 pub mod service;
@@ -21,6 +24,9 @@ pub static PUBLIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../public");
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_PORT: u16 = 7429;
+
+/// What the global hotkeys can do, with their out-of-the-box keys (changeable in the editor).
+pub static HOTKEYS: [hotkeys::Action; 1] = [hotkeys::Action { id: "hide", default: "Ctrl+Alt+Shift+H" }];
 
 pub struct Options {
     pub port: u16,
@@ -58,8 +64,7 @@ pub struct App {
     pub data_dir: PathBuf,
     pub discord: service::DiscordHandle,
     pub server: Arc<server::ServerHandle>,
-    /// No config existed before this start (first run).
-    pub fresh: bool,
+    pub hotkeys: Arc<hotkeys::Hotkeys>,
 }
 
 #[derive(Debug)]
@@ -89,8 +94,8 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
         if e.kind() == std::io::ErrorKind::AddrInUse || e.raw_os_error() == Some(10013) { StartError::PortBusy(opts.port) } else { other(e) }
     })?;
 
-    let fresh = !opts.data_dir.join("config.json").exists();
     let config = config::ConfigStore::load(&opts.data_dir).map_err(other)?;
+    let hotkeys = hotkeys::Hotkeys::load(&opts.data_dir, &HOTKEYS);
     let client_id = config.current()["discord"]["clientId"].as_str().unwrap_or("").to_string();
     let secrets = Arc::new(secrets::SecretStore::new(&opts.data_dir));
     let http = reqwest::Client::builder().user_agent(format!("kosmik-voice/{VERSION}")).timeout(Duration::from_secs(20)).build().map_err(|e| StartError::Other(e.to_string()))?;
@@ -105,9 +110,30 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
     });
     let mut status = discord.status_watch();
     tokio::spawn(async move {
+        let mut last = None;
         while status.changed().await.is_ok() {
             let s = status.borrow_and_update().clone();
-            log::line(format!("[discord] {}{}", s.state, if s.message.is_empty() { String::new() } else { format!(": {}", s.message) }));
+            // Retries while Discord is closed repeat the same status: log it once.
+            if last.as_ref() != Some(&s) {
+                log::line(format!("[discord] {}{}", s.state, if s.message.is_empty() { String::new() } else { format!(": {}", s.message) }));
+                last = Some(s);
+            }
+        }
+    });
+    // Discord closed: check every second whether it started, and connect right away when it does
+    // (instead of at the next retry). Discord restarts itself for its own updates quite often.
+    let d = discord.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if d.status().state != "discord_closed" {
+                continue;
+            }
+            if let Ok(Ok(running)) = tokio::task::spawn_blocking(procs::list_processes).await {
+                if procs::discord_running(&running) {
+                    d.nudge();
+                }
+            }
         }
     });
 
@@ -116,7 +142,18 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
         None => server::PublicFiles::Embedded(&PUBLIC),
     };
     let server = Arc::new(
-        server::start_server(listener, server::ServerOptions { data_dir: opts.data_dir.clone(), public, config, secrets, discord: discord.clone() })
+        server::start_server(
+            listener,
+            server::ServerOptions {
+                data_dir: opts.data_dir.clone(),
+                public,
+                config,
+                secrets,
+                discord: discord.clone(),
+                find_obs: Arc::new(|| obs::read_obs_settings(std::env::var_os("APPDATA").map(PathBuf::from).as_deref())),
+                hotkeys: hotkeys.clone(),
+            },
+        )
             .await
             .map_err(other)?,
     );
@@ -136,5 +173,6 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
         });
     }
 
-    Ok(App { url: server.url.clone(), data_dir: opts.data_dir, discord, server, fresh })
+    Ok(App { url: server.url.clone(), data_dir: opts.data_dir, discord, server, hotkeys })
 }
+

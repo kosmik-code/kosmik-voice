@@ -1,5 +1,5 @@
 # Builds the Windows installer and publishes it as a GitHub release when a version tag is pushed:
-#   (bump version in app/Cargo.toml)  git tag v0.2.0 && git push origin v0.2.0
+#   (bump version in app/Cargo.toml)  git tag v1.2.3 && git push origin v1.2.3
 name: Release
 
 on:
@@ -13,7 +13,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Tag matches the app version
         shell: bash
@@ -67,10 +67,29 @@ jobs:
           } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM out/latest.json
           Get-Content out/latest.json
 
+      # A draft first, published only once both files are up, so installed apps never see a latest.json
+      # without its installer. Uploads are retried (GitHub sometimes answers 5xx), and re-running a
+      # failed job starts again from a clean draft.
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            out/*.exe
-            out/latest.json
-          generate_release_notes: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $title = "Kosmik Voice $($tag.TrimStart('v'))"
+          function Retry([string]$what, [scriptblock]$step) {
+            for ($i = 1; $i -le 5; $i++) {
+              & $step
+              if ($LASTEXITCODE -eq 0) { return }
+              Write-Host "$what failed (try $i), retrying"; Start-Sleep (10 * $i)
+            }
+            throw "$what kept failing"
+          }
+          $draft = gh release view $tag --json isDraft --jq .isDraft 2>$null
+          if ($draft -eq 'false') { throw "$tag is already published" }
+          # Done once it's gone, even if the delete itself was answered with a 5xx.
+          if ($draft -eq 'true') { Retry 'remove old draft' { gh release delete $tag --yes; gh release view $tag *> $null; $global:LASTEXITCODE = [int]($LASTEXITCODE -eq 0) } }
+          # A 5xx can still have created it, so look before creating again.
+          Retry 'create draft' { gh release view $tag *> $null; if ($LASTEXITCODE -ne 0) { gh release create $tag --draft --verify-tag --title $title --generate-notes } }
+          Retry 'upload' { gh release upload $tag (Get-ChildItem out/*.exe).FullName out/latest.json --clobber }
+          Retry 'publish' { gh release edit $tag --draft=false }

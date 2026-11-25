@@ -27,6 +27,9 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
   display: flex;
 }
 #tiles { display: flex; gap: var(--gap); }
+/* Hidden from the tray, the hotkey (Ctrl+Alt+Shift+H) or the editor. */
+#stage { transition: opacity 250ms ease; }
+body.kv-hidden #stage { opacity: 0; }
 #stage.dir-column #tiles { flex-direction: column; }
 #stage.dir-grid #tiles { display: grid; grid-template-columns: repeat(var(--cols), var(--size)); }
 #stage.ax-left { justify-content: flex-start; }
