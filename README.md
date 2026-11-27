@@ -27,7 +27,7 @@ The editor is in Spanish or English and comes in three looks (Studio, Daylight, 
 2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
 3. The editor opens in your browser. Kosmik Voice now lives in the tray, next to the clock: click its icon to open the editor again, right-click it to hide the overlay, quit, or stop it starting with Windows.
 
-It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
+It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. To build and launch it yourself, see [Run from source](#run-from-source).
 
 ## Set it up
 
@@ -82,7 +82,7 @@ Kosmik Voice talks to the Discord desktop client through **local RPC**, the same
 
 About the redirect: without a registered redirect, Discord answers the authorization with `Missing "redirect_uri" in request`. The app must not send a redirect itself, because Discord rejects that with `Redirect URI cannot be used in the RPC OAuth2 Authorization flow`. If authorization fails, the app stops retrying, so Discord doesn't show one popup after another. The raw error is under *Technical details* in the Discord tab. Fix the cause, then press **Save and connect** to retry.
 
-The secret and the tokens are stored in `data/secrets.json` and never sent to the browser. To start over, use **Log out of Discord** in the editor or delete that file.
+The secret and the tokens are stored in `secrets.json` in the app's data folder and never sent to the browser. To start over, use **Log out of Discord** in the editor or delete that file.
 
 ### Features in depth
 
@@ -112,24 +112,22 @@ The secret and the tokens are stored in `data/secrets.json` and never sent to th
 
 ### The app
 
-The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the editor opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The editor and overlay pages are built into the program. Data goes to `%APPDATA%\Kosmik Voice` (config, secrets, pictures, `hotkeys.json`, and `kosmik-voice.log`, replaced on each start). Opening it a second time just opens the editor. The Node.js version in this repository does exactly the same job and stays here for development; both use the same files and the same port, so run only one of them at a time.
-
-To move from the Node.js version to the app, quit the Node.js version and copy the contents of its `data` folder into `%APPDATA%\Kosmik Voice`. Your OBS sources keep working, since the address is the same.
+Kosmik Voice is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: the program runs a local server and opens the editor in your browser. The editor and overlay pages are built into the program. Both the installer and source builds use the same data folder, `%APPDATA%\Kosmik Voice`, which holds config, secrets, pictures, `hotkeys.json`, and `kosmik-voice.log` (replaced on each start). Opening the tray app a second time just opens the editor.
 
 ### Configuration
 
-Everything is edited in the browser and stored in `config.json` in the data folder (`data/` when running from source). The file is validated before it's written: invalid values are rejected with the field that's wrong, and the previous file stays intact. If the file gets corrupted by hand, it's moved aside to `config.broken-<time>.json` and defaults are loaded. Uploaded images live in `data/assets/`; an image still used by a user can't be deleted.
+Everything is edited in the browser and stored in `config.json` in the data folder. The file is validated before it's written: invalid values are rejected with the field that's wrong, and the previous file stays intact. If the file gets corrupted by hand, it's moved aside to `config.broken-<time>.json` and defaults are loaded. Uploaded images live in the data folder's `assets/` subfolder; an image still used by a user can't be deleted.
 
-Environment variables (app and source): `KV_PORT` (default `7429`), `KV_DATA_DIR` (default `%APPDATA%\Kosmik Voice` for the app, `./data` from source) and `KV_UPDATE_CHECK` (`0` turns off the update check). The app also takes `KV_PUBLIC_DIR=<folder>` to serve the pages from disk while developing.
+Environment variables: `KV_PORT` (default `7429`), `KV_DATA_DIR` (default `%APPDATA%\Kosmik Voice`), `KV_UPDATE_CHECK` (`0` turns off update checks), and `KV_PUBLIC_DIR` (serve pages from this folder instead of the embedded copies).
 
 ### Updates
 
-The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-voice/releases/latest) shortly after it starts and then every 6 hours, with Tauri's updater: it reads the release's `latest.json`, and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). Installing runs the installer with a progress bar only, then starts the app again. When running from source, Kosmik Voice instead checks in the background whether this repository has something newer than your copy. If it does, the console says so and the editor shows a banner linking to the changes. *Hide* dismisses it until a newer update appears. Without a network connection nothing is shown and the app works as usual. A copy downloaded as a zip (no `.git` folder) compares the `version` in `package.json` instead. After an update, open overlays reload themselves.
+The tray app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-voice/releases/latest) shortly after it starts and then every 6 hours. Tauri's updater reads `latest.json` and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). The installer shows a progress bar, then starts the app again. In `--headless` mode the app checks GitHub once on startup and links to a newer release instead of installing it. *Hide* dismisses the editor banner until a newer update appears. Without a network connection the app works as usual. After an update, open overlays reload themselves.
 
 ### Security
 
 - The server listens on `127.0.0.1` only.
-- Besides Discord and, when you press *Add it to OBS*, OBS on this PC, the only outbound request is the update check: the app downloads the release's `latest.json` from GitHub every few hours, sending nothing about you; from source it's one anonymous GitHub API call per start, carrying the commit id of your copy. `KV_UPDATE_CHECK=0` turns it off.
+- Besides Discord and, when you press *Add it to OBS*, OBS on this PC, the only outbound request is the update check to GitHub. `KV_UPDATE_CHECK=0` turns it off.
 - Every request must carry a `127.0.0.1:<port>` or `localhost:<port>` Host header, which blocks DNS rebinding.
 - Every change needs a same-origin `Origin` header, and JSON bodies need `Content-Type: application/json`, so other websites can't change your config.
 - The WebSocket refuses foreign origins, so other websites can't read who is in your call.
@@ -137,45 +135,46 @@ The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik
 
 ### Run from source
 
-With [Node.js](https://nodejs.org/) 22 or newer: download this project (green **Code** button → *Download ZIP*, or `git clone https://github.com/kosmik-code/kosmik-voice`), open a terminal in its folder and run:
+On Windows, install [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Clone or download this repository, then run this from its root:
 
 ```powershell
-npm install
-npm start
+cargo run --manifest-path app/Cargo.toml
 ```
 
-Then open the editor at **<http://127.0.0.1:7429/editor/>**. Keep that terminal open while you stream. Updates: `git pull` (or a new ZIP) and start it again; the `data` folder is kept.
+This launches the tray app and opens the editor at **<http://127.0.0.1:7429/editor/>**. For just the local server, append `-- --headless`, open that address yourself, and press Ctrl+C to stop it. Node.js is not required to build or run the app.
 
 ### Development
 
+From the repository root:
+
 ```powershell
-npm test                # editor logic, overlay model and the Node.js backend
-cd app
-cargo test              # the Rust backend (same cases, against a fake Discord pipe)
-$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\kosmik-voice.key"   # signs the update
-npx @tauri-apps/cli@2 build   # installer in app/target/release/bundle/nsis/
+cargo test --manifest-path app/Cargo.toml --locked
 ```
 
-Building the app needs [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` as a release (`.github/workflows/release.yml`); installed apps offer it from then on. The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
+The Rust tests include a fake Discord IPC server that speaks the real protocol. Authorization and voice events have also been checked against a real Discord client. If Discord changes its voice payload, start with `app/src/voice.rs`.
+
+Optional frontend checks use Node.js 22.7 or newer with no npm install. They launch an isolated Rust server and don't use your Discord credentials or settings:
+
+```powershell
+cargo build --manifest-path app/Cargo.toml --locked
+node --test test/editor.test.js test/model.test.js test/i18n.test.js
+node scripts/check-themes.mjs  # Microsoft Edge required; saves screenshots in data/theme-checks/
+```
+
+Set `KV_EDGE` to use a different Edge executable, `KV_SCREENSHOTS` to change the screenshot directory, or `KV_TEST_BINARY` to test a different build of `kosmik-voice.exe`.
+
+To build an installer locally, install the Tauri CLI with `cargo install tauri-cli --version '^2' --locked`, then run `cargo tauri build` from `app/`. The NSIS installer is written to `app/target/release/bundle/nsis/`. To sign the updater artifact, set `TAURI_SIGNING_PRIVATE_KEY` to the signing key before building.
+
+Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` (`.github/workflows/release.yml`). The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
 
 | Path | Role |
 |---|---|
 | `app/src/` | The app: `ipc.rs`, `auth.rs`, `voice.rs`, `service.rs` (Discord), `procs.rs` (spots Discord starting), `obs.rs` (*Add it to OBS*), `config.rs`, `server.rs`, `update.rs`, `main.rs` (tray, hotkey) and `updates.rs` (the app's updater) |
 | `app/tauri.conf.json`, `app/windows/hooks.nsh` | Installer settings; uninstall removes the autostart entry |
-| `src/discord/ipc.js` | Discord IPC framing, handshake and requests |
-| `src/discord/auth.js` | OAuth: AUTHORIZE → token exchange → AUTHENTICATE, refresh, secret store |
-| `src/discord/voice.js` | Reduces RPC voice events into a snapshot |
-| `src/discord/service.js` | Reconnects, follows the selected channel, re-subscribes on switch |
-| `src/config.js` | Config schema, validation and atomic store |
-| `src/server.js` | HTTP + WebSocket server and its guards |
 | `public/shared/model.js` | Pure tile model and demo voice, shared by the overlay and the editor |
 | `public/overlay/` | OBS overlay page and themes |
 | `public/editor/` | Web editor (`logic.js` is pure and tested) |
 | `public/editor/kosmik-ui.*` | Look shared with Kosmik Layouts (keep both copies identical) |
-
-The tests use a fake Discord IPC server that speaks the real protocol. Authorization and voice events have also been checked by hand against a real Discord client. If Discord changes a payload, the place to adjust is `src/discord/voice.js`.
-
-Optional browser checks on Windows: `node scripts/check-themes.mjs` starts an isolated local server and headless Microsoft Edge, checks all five themes and saves screenshots under `data/theme-checks/`. It doesn't use your Discord credentials or config. `KV_EDGE` sets a custom Edge executable and `KV_SCREENSHOTS` a different screenshot folder.
 
 ## License
 

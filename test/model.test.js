@@ -1,14 +1,19 @@
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { buildTiles } from "../public/shared/model.js";
-import { defaultConfig, defaultPreset } from "../src/config.js";
+import { startRustApp } from "./helpers/rust-app.js";
+
+let app;
+before(async () => { app = await startRustApp(); });
+after(async () => { await app?.close(); });
+const defaultPreset = () => structuredClone(app.defaults.presets[0]);
 
 const A = "111111111111111111";
 const B = "222222222222222222";
 const C = "333333333333333333";
 
 function cfg() {
-  const c = defaultConfig();
+  const c = structuredClone(app.defaults);
   c.users = [
     { id: A, displayName: "Kosmik", role: "Host", roleColor: "#e98a9b", images: { idle: "k-idle.png", talking: "k-talk.gif", muted: "", deafened: "" } },
     { id: B, displayName: "", role: "", roleColor: "", images: { idle: "", talking: "", muted: "", deafened: "" } },

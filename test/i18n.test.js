@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CATALOG, LANGUAGES, t, parts, getLanguage, setLanguage } from "../public/editor/i18n.js";
@@ -6,7 +6,12 @@ import {
   pickLanguage, describePath, USER_LABELS, PRESET_LABELS, FIELDS, THEMES, TEMPLATES, SIM_STATES, CANVASES,
   statusText, translateMessage, discordHelp, firstSteps, obsSetup, isDirty,
 } from "../public/editor/logic.js";
-import { defaultConfig } from "../src/config.js";
+import { startRustApp } from "./helpers/rust-app.js";
+
+let app;
+before(async () => { app = await startRustApp(); });
+after(async () => { await app?.close(); });
+const defaultConfig = () => structuredClone(app.defaults);
 
 function inLanguage(lang, fn) {
   const before = getLanguage();

@@ -45,7 +45,7 @@ pub fn default_data_dir() -> PathBuf {
 }
 
 impl Options {
-    /// KV_PORT, KV_DATA_DIR, KV_PUBLIC_DIR and KV_UPDATE_CHECK=0, like the Node version.
+    /// Reads KV_PORT, KV_DATA_DIR, KV_PUBLIC_DIR and KV_UPDATE_CHECK.
     pub fn from_env() -> Self {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         Options {

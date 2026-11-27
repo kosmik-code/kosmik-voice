@@ -41,7 +41,7 @@ fn text() -> Text {
             quit: "Salir",
             update: "Instalar la actualización {version}",
             updating: "Actualizando…",
-            busy: "Kosmik Voice no pudo arrancar: el puerto {port} está en uso.\n\n¿Ya está abierto Kosmik Voice? Fijate en la bandeja del sistema, o cerrá la versión de terminal (npm start).",
+            busy: "Kosmik Voice no pudo arrancar: el puerto {port} está en uso.\n\n¿Ya está abierto Kosmik Voice? Fijate en la bandeja del sistema o cerrá la otra instancia.",
             failed: "Kosmik Voice no pudo arrancar:\n\n{error}",
         }
     } else {
@@ -52,7 +52,7 @@ fn text() -> Text {
             quit: "Quit",
             update: "Install update {version}",
             updating: "Updating…",
-            busy: "Kosmik Voice couldn't start: port {port} is in use.\n\nIs Kosmik Voice already running? Check the system tray, or close the terminal version (npm start).",
+            busy: "Kosmik Voice couldn't start: port {port} is in use.\n\nIs Kosmik Voice already running? Check the system tray or close the other instance.",
             failed: "Kosmik Voice couldn't start:\n\n{error}",
         }
     }
@@ -186,7 +186,7 @@ fn main() {
     let autostarted = args.iter().any(|a| a == "--autostart");
     opts.app_updater = opts.update_check;
 
-    // Ran as this app before? (Only the app writes this log; the Node.js version doesn't.)
+    // Has this data folder been used by the app before?
     let ran_before = opts.data_dir.join("kosmik-voice.log").exists();
     let rt = runtime();
     tauri::async_runtime::set(rt.handle().clone());
@@ -215,9 +215,8 @@ fn main() {
             app.manage(started.server.clone());
 
             let launcher = app.autolaunch();
-            // First run of the app (even with settings copied over from the Node.js version): start with
-            // Windows, so the overlay is there whenever OBS is. Already on: write it again, so it follows the
-            // program if it was installed somewhere else. Turned off stays off.
+            // On first run, start with Windows so the overlay is there whenever OBS is. If already on,
+            // refresh the entry to follow the executable if it moved. Turned off stays off.
             let marker = started.data_dir.join("app-first-run.done");
             if (!marker.exists() && !ran_before) || launcher.is_enabled().unwrap_or(false) {
                 let _ = launcher.enable();

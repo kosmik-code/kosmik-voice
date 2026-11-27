@@ -1,6 +1,5 @@
 //! Local HTTP + WebSocket server. Loopback only; every request must carry a local Host and
 //! every mutation a same-origin Origin, so web pages can neither drive nor read it.
-//! Same routes and guards as src/server.js.
 
 use crate::config::{ConfigStore, SaveError, is_image_name, validate_config};
 use crate::secrets::SecretStore;

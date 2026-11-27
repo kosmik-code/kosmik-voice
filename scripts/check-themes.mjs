@@ -3,53 +3,65 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
-import { EventEmitter } from "node:events";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import WebSocket from "ws";
-import { ConfigStore, defaultConfig, defaultPreset } from "../src/config.js";
-import { SecretStore } from "../src/discord/auth.js";
-import { startServer } from "../src/server.js";
+import { startRustApp, stopOwnedProcess } from "../test/helpers/rust-app.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = path.resolve(process.env.KV_SCREENSHOTS || path.join(root, "data", "theme-checks"));
-await mkdir(out, { recursive: true });
-const scratch = await mkdtemp(path.join(out, "run-"));
-const ids = Array.from({ length: 5 }, (_, i) => String(i + 1).repeat(18));
-const config = new ConfigStore(path.join(scratch, "data"));
-const draft = defaultConfig();
-draft.users = ids.map((id, i) => ({ id, displayName: i === 3 ? "Un alias extraordinariamente largo" : ["Kosmik", "Invitada", "Muteado", "Sordo", "Ausente"][i], role: i === 0 ? "Host" : "" }));
-draft.presets = ["pixel-cafe", "clean", "neon", "comic", "glass"].map((theme) => ({
-  ...defaultPreset(theme, theme), theme, mode: "slots", users: ids,
-  layout: { ...defaultPreset().layout, alignX: "center", alignY: "center", size: 200, gap: 64 },
-}));
-await config.save(draft);
-const discord = new EventEmitter();
-discord.status = { state: "setup_required", message: "Isolated visual check" };
-discord.snapshot = () => ({ channel: null, members: [] });
-const server = await startServer({ port: 0, dataDir: config.dir, publicDir: path.join(root, "public"), config, secrets: new SecretStore(config.dir), discord });
 const edgePath = process.env.KV_EDGE || "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const edge = spawn(edgePath, ["--headless=new", "--disable-gpu", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${path.join(scratch, "edge")}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
-const edgeExit = new Promise((resolve) => edge.once("exit", resolve));
+const server = await startRustApp({ publicDir: path.join(root, "public") });
+let scratch;
+let edge;
 let ws;
 let browserClosed = false;
+let checkFailed = false;
 try {
+  await mkdir(out, { recursive: true });
+  scratch = await mkdtemp(path.join(tmpdir(), "kv-edge-test-"));
+  const draft = structuredClone(server.defaults);
+  const def = draft.presets[0];
+  const ids = Array.from({ length: 5 }, (_, i) => String(i + 1).repeat(18));
+  draft.users = ids.map((id, i) => ({ id, displayName: i === 3 ? "Un alias extraordinariamente largo" : ["Kosmik", "Invitada", "Muteado", "Sordo", "Ausente"][i], role: i === 0 ? "Host" : "" }));
+  draft.presets = ["pixel-cafe", "clean", "neon", "comic", "glass"].map((theme) => ({
+    ...def, id: theme, name: theme, theme, mode: "slots", users: ids,
+    layout: { ...def.layout, alignX: "center", alignY: "center", size: 200, gap: 64 },
+  }));
+
+  edge = spawn(edgePath, ["--headless=new", "--disable-gpu", "--no-first-run", "--remote-debugging-port=0", `--user-data-dir=${path.join(scratch, "edge")}`, "about:blank"], {
+    env: { ...process.env, APPDATA: scratch, LOCALAPPDATA: scratch },
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+  });
+  let startupTimer;
   const endpoint = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Edge did not expose DevTools within 15s")), 15000);
+    startupTimer = setTimeout(() => reject(new Error("Edge did not expose DevTools within 15s")), 15000);
     let log = "";
     edge.once("error", reject);
-    edge.stderr.on("data", (chunk) => {
-      log += chunk;
-      const match = log.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-      if (match) { clearTimeout(timer); resolve(match[1]); }
-    });
-  });
+    edge.once("exit", (code, signal) => reject(new Error(`Edge exited before exposing DevTools (${signal ?? code}): ${log}`)));
+    const onData = (chunk) => {
+      log = (log + chunk).slice(-4096);
+      const match = log.match(/DevTools listening on (ws:\/\/[^\s]+)\s/);
+      if (match) {
+        edge.stderr.off("data", onData);
+        edge.stderr.resume();
+        resolve(match[1]);
+      }
+    };
+    edge.stderr.on("data", onData);
+  }).finally(() => clearTimeout(startupTimer));
   ws = new WebSocket(endpoint);
-  await new Promise((resolve, reject) => ws.once("open", resolve).once("error", reject));
+  let connectTimer;
+  await new Promise((resolve, reject) => {
+    connectTimer = setTimeout(() => reject(new Error("Edge DevTools WebSocket did not open within 10s")), 10000);
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", (event) => reject(new Error(`Edge DevTools WebSocket failed: ${event.message}`)), { once: true });
+  }).finally(() => clearTimeout(connectTimer));
   let seq = 0;
   const pending = new Map();
-  ws.on("message", (buf) => {
-    const m = JSON.parse(buf);
+  ws.addEventListener("message", ({ data }) => {
+    const m = JSON.parse(data);
     const p = pending.get(m.id);
     if (!p) return;
     pending.delete(m.id);
@@ -76,9 +88,15 @@ try {
   const ready = async (selector) => evaluate(`new Promise((resolve,reject)=>{const end=Date.now()+5000;function check(){if(document.querySelector(${JSON.stringify(selector)}))return resolve(true);if(Date.now()>end)return reject(new Error('Render not ready'));requestAnimationFrame(check)}check()})`);
   // Generate a transparent PNG locally so the comic outline is exercised on real alpha.
   const cutout = await evaluate(`(()=>{const c=document.createElement('canvas');c.width=c.height=200;const x=c.getContext('2d');x.fillStyle='#f6ac64';x.fillRect(45,55,110,115);x.fillRect(45,30,30,35);x.fillRect(125,30,30,35);x.fillStyle='#24223f';x.fillRect(65,90,16,16);x.fillRect(120,90,16,16);x.fillRect(94,125,12,12);return c.toDataURL('image/png').split(',')[1]})()`);
-  await writeFile(path.join(config.dir, "assets", "cutout.png"), Buffer.from(cutout, "base64"));
-  draft.users[0].images = { idle: "cutout.png" };
-  await config.save(draft);
+  const upload = await server.request("/api/assets?name=cutout.png", {
+    method: "POST", headers: { "Content-Type": "image/png" }, body: Buffer.from(cutout, "base64"),
+  });
+  const asset = await upload.json();
+  assert.equal(upload.status, 201, JSON.stringify(asset));
+  assert.equal(asset.name, "cutout.png");
+  draft.users[0].images = { idle: asset.name };
+  const { status, body } = await server.putConfig(draft);
+  assert.equal(status, 200, JSON.stringify(body));
   const shot = async (name) => {
     const { data } = await send("Page.captureScreenshot", { format: "png" });
     await writeFile(path.join(out, `${name}.png`), Buffer.from(data, "base64"));
@@ -133,16 +151,26 @@ try {
   console.log("PASS editor: theme colour fields and name stripe toggle");
   await call("Browser.close");
   browserClosed = true;
+} catch (error) {
+  checkFailed = true;
+  throw error;
 } finally {
-  ws?.close();
-  if (!browserClosed) edge.kill();
-  // Wait for our browser process to release the task-owned profile before deleting it.
-  let exitTimer;
-  await Promise.race([edgeExit, new Promise((resolve) => { exitTimer = setTimeout(resolve, 3000); })]);
-  clearTimeout(exitTimer);
-  await server.close();
-  // Scratch is task-owned. Screenshot evidence remains outside this directory.
-  await rm(path.join(scratch, "data"), { recursive: true, force: true });
-  // Edge profile cleanup can be delayed by Windows locks; keep it if still in use.
-  try { await rm(scratch, { recursive: true, force: true }); } catch { console.log(`Profile still locked: ${scratch}`); }
+  const shutdownErrors = [];
+  try {
+    ws?.close();
+    await stopOwnedProcess(edge, { graceful: browserClosed });
+  } catch (error) {
+    shutdownErrors.push(error);
+  }
+  if (scratch) {
+    // Edge can still hold the profile open on Windows, even after exit.
+    try { await rm(scratch, { recursive: true, force: true, maxRetries: 3 }); }
+    catch { console.log(`Profile still locked: ${scratch}`); }
+  }
+  try { await server.close(); } catch (error) { shutdownErrors.push(error); }
+  if (shutdownErrors.length) {
+    const error = new AggregateError(shutdownErrors, "Could not stop theme check processes");
+    if (!checkFailed) throw error;
+    console.warn(error);
+  }
 }

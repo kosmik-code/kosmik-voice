@@ -21,7 +21,7 @@ export function pickLanguage(stored, browserLanguages) {
   return first === "es" ? "es" : "en";
 }
 
-// Mirror of LAYOUT/STYLE in src/config.js (a test keeps them in sync).
+// Mirrors the layout and style schema in app/src/config.rs (checked against the Rust app).
 export const FIELDS = {
   layout: {
     direction: spec("layout", "direction", { kind: "enum", def: "row" }, ["row", "column", "grid"]),
@@ -60,7 +60,7 @@ export const FIELDS = {
   },
 };
 
-// Mirror of CANVASES in src/config.js (a test keeps them in sync). First = default.
+// Matches the accepted canvases in app/src/config.rs. First = default.
 export const CANVASES = [
   { value: "1920x1080", width: 1920, height: 1080 },
   { value: "2560x1440", width: 2560, height: 1440 },
@@ -68,7 +68,7 @@ export const CANVASES = [
   { value: "1080x1920", width: 1080, height: 1920 },
 ].map((c) => translated(c, { label: `canvas.${c.value}` }));
 
-// Mirror of THEMES in src/config.js (a test keeps them in sync). First = default.
+// Matches the accepted themes in app/src/config.rs. First = default.
 // swatch: [background, accent] for the small colour sample next to the select.
 export const THEMES = [
   { value: "pixel-cafe", swatch: ["#24223f", "#f3e9d2"] },
@@ -354,7 +354,7 @@ export function knownPaths(config) {
   return out;
 }
 
-/** Same shape as defaultPreset() in src/config.js, built from FIELDS (src/ is not served). */
+/** Builds the same shape as the Rust server's default preset, using FIELDS. */
 export function newPreset(id, name) {
   const fill = (g) => Object.fromEntries(Object.entries(FIELDS[g]).map(([k, f]) => [k, f.def]));
   return { id, name, mode: "reactive", theme: "clean", canvas: CANVASES[0].value, users: [], showUnlisted: true, layout: fill("layout"), style: fill("style") };

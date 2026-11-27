@@ -1,5 +1,4 @@
-//! Config schema, validation and atomic persistence. A port of src/config.js: the same JSON
-//! file, the same defaults and the same error paths and messages, so the editor works unchanged.
+//! Config schema, defaults, validation and atomic JSON persistence for the editor.
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -103,7 +102,7 @@ impl Validated {
     }
 }
 
-// ---- small matchers (the JS regexes, without a regex engine) ----
+// ---- small matchers (no regex engine) ----
 
 pub fn is_user_id(s: &str) -> bool {
     (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())

@@ -39,10 +39,10 @@ const S = {
   flags: loadFlags(), // { hidden, templatePicked, obsCopied } kept in this browser
   libraryMsg: null, // { key, params } so it follows the language
   discordMsg: null, // { tone, key }
-  update: null, // startup update check result from the server (src/update.js)
+  update: null, // update status from the Rust server
   serverVersion: null, // the app version from the first hello; a new one after an update reloads the page
   hidden: false, // overlays hidden from the tray or the hotkey
-  hotkeys: null, // [{ id, key, default, error }] from the app; null = no hotkeys (Node.js version)
+  hotkeys: null, // [{ id, key, default, error }] from the app when available
   hkCapture: null, // action id waiting for a new key combination
   hkError: null, // why the last combination was refused
 };
@@ -919,7 +919,6 @@ async function addToObs(pr, button) {
   }
   if (err === "unknown_preset") return toast(t("ed.obs.unsaved"), "warn");
   if (OBS_ERRORS.has(err)) return toast(t(`ed.obs.err.${err}`), "warn");
-  // The Node.js version has no such route: it answers 404.
   if (r.status === 404) return toast(t("ed.obs.err.unsupported"), "warn");
   toast(t("ed.obs.err.failed", { message: r.data?.message ?? t("ed.obs.err.noAnswer") }), "warn");
 }
@@ -1522,7 +1521,8 @@ function renderUpdate() {
       h("span", { text: t("ed.update.restarting") }),
     );
   }
-  const key = u?.state === "available" ? `${u.url}|${u.behind ?? u.latest?.version}` : "";
+  const version = u?.latest?.version;
+  const key = u?.state === "available" && u.via === "app" && version ? `${u.url}|${version}` : "";
   let dismissed = "";
   try {
     dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) ?? "";
@@ -1531,14 +1531,11 @@ function renderUpdate() {
   }
   box.hidden = !key || dismissed === key;
   if (box.hidden) return box.replaceChildren();
-  const what = u.behind ? t(u.behind === 1 ? "ed.update.one" : "ed.update.many", { n: u.behind }) : t("ed.update.version", { version: u.latest.version });
   box.replaceChildren(
     h("strong", { text: t("ed.update.title") }),
-    h("span", { text: what }),
-    u.via === "git"
-      ? h("span", {}, parts("ed.update.howGit", { cmd: h("code", { text: "git pull" }) }))
-      : h("span", { text: t(u.error ? "ed.update.failed" : u.install ? "ed.update.howInstall" : u.via === "app" ? "ed.update.howApp" : "ed.update.howZip") }),
-    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: u.via === "git" || (u.install && !u.error) ? t("ed.update.changes") : t("ed.update.download") }),
+    h("span", { text: t("ed.update.version", { version }) }),
+    h("span", { text: t(u.error ? "ed.update.failed" : u.install ? "ed.update.howInstall" : "ed.update.howApp") }),
+    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: u.install && !u.error ? t("ed.update.changes") : t("ed.update.download") }),
     u.install
       ? h("button", { type: "button", class: "small primary", text: t(u.error ? "ed.update.retry" : "ed.update.install"), onclick: async (e) => {
           const button = e.currentTarget;

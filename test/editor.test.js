@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   FIELDS,
@@ -33,8 +33,28 @@ import {
   USER_LABELS,
   THEMES,
 } from "../public/editor/logic.js";
-import { defaultConfig, defaultPreset, validateConfig, THEMES as SERVER_THEMES } from "../src/config.js";
 import { buildTiles, boxLayout } from "../public/shared/model.js";
+import { startRustApp } from "./helpers/rust-app.js";
+
+let app;
+before(async () => { app = await startRustApp(); });
+after(async () => { await app?.close(); });
+const defaultConfig = () => structuredClone(app.defaults);
+const defaultPreset = (id = "main", name = "Principal") => ({ ...defaultConfig().presets[0], id, name });
+
+async function saveConfig(draft, label = "PUT /api/config") {
+  const { status, body } = await app.putConfig(draft);
+  assert.equal(status, 200, `${label}: ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function rejectConfig(draft) {
+  const before = await app.getConfig();
+  const { status, body } = await app.putConfig(draft);
+  assert.equal(status, 400, JSON.stringify(body));
+  assert.deepEqual(await app.getConfig(), before, "rejected PUT leaves config unchanged");
+  return body.errors;
+}
 
 const A = "111111111111111111";
 const B = "222222222222222222";
@@ -53,28 +73,44 @@ function cfg() {
   return c;
 }
 
-test("editor field schema matches the server schema (defaults, ranges, enums)", () => {
-  const def = defaultPreset();
+test("editor field schema matches the server schema (defaults, ranges, enums)", async () => {
+  const def = app.defaults.presets[0];
   for (const group of ["layout", "style"]) {
     assert.deepEqual(Object.keys(FIELDS[group]).sort(), Object.keys(def[group]).sort(), group);
     for (const [key, f] of Object.entries(FIELDS[group])) {
-      assert.equal(f.def, def[group][key], `${group}.${key} default`);
-      assert.ok(f.label, `${group}.${key} label`);
-      const ok = (v) => {
+      const path = `presets[0].${group}.${key}`;
+      assert.equal(f.def, def[group][key], `${path} default`);
+      assert.ok(f.label, `${path} label`);
+      const check = async (value, message) => {
         const c = defaultConfig();
-        c.presets[0][group][key] = v;
-        return validateConfig(c).ok;
+        c.presets[0][group][key] = value;
+        if (message) {
+          assert.deepEqual(await rejectConfig(c), [{ path, message }]);
+        } else {
+          const saved = await saveConfig(c, `${path}=${value}`);
+          assert.equal(saved.presets[0][group][key], value, path);
+        }
       };
       if (f.kind === "int" || f.kind === "num") {
         const eps = f.kind === "int" ? 1 : 0.01;
-        assert.ok(ok(f.min) && ok(f.max), `${group}.${key} bounds accepted`);
-        assert.ok(!ok(f.min - eps) && !ok(f.max + eps), `${group}.${key} outside bounds rejected`);
+        const type = f.kind === "int" ? "an integer" : "a number";
+        const message = `must be ${type} between ${f.min} and ${f.max}`;
+        await check(f.min);
+        await check(f.max);
+        await check(f.min - eps, message);
+        await check(f.max + eps, message);
       }
       if (f.kind === "enum") {
-        for (const o of f.options) assert.ok(ok(o.value) && o.label, `${group}.${key}=${o.value}`);
-        assert.ok(!ok("zzz"));
+        for (const o of f.options) {
+          assert.ok(o.label, `${path}=${o.value}`);
+          await check(o.value);
+        }
+        await check("zzz", `must be one of ${f.options.map((o) => o.value).join(", ")}`);
       }
-      if (f.kind === "str") assert.ok(ok("x".repeat(f.max)) && !ok("x".repeat(f.max + 1)));
+      if (f.kind === "str") {
+        await check("x".repeat(f.max));
+        await check("x".repeat(f.max + 1), `must be text of ${f.min}-${f.max} characters`);
+      }
     }
   }
 });
@@ -86,7 +122,7 @@ test("slugify makes valid preset ids from any name", () => {
   assert.equal(slugify("x".repeat(50)).length, 32);
 });
 
-test("uniquePresetId avoids taken ids and stays within 32 chars", () => {
+test("uniquePresetId avoids taken ids and stays within 32 chars", async () => {
   assert.equal(uniquePresetId("Principal", ["main"]), "principal");
   assert.equal(uniquePresetId("Main", ["main"]), "main-2");
   assert.equal(uniquePresetId("Main", ["main", "main-2", "main-3"]), "main-4");
@@ -94,7 +130,7 @@ test("uniquePresetId avoids taken ids and stays within 32 chars", () => {
   assert.equal(long, "y".repeat(30) + "-2");
   const c = defaultConfig();
   c.presets[0].id = long;
-  assert.ok(validateConfig(c).ok);
+  assert.equal((await saveConfig(c)).presets[0].id, long);
 });
 
 test("mapErrors attaches each error to its field or nearest known ancestor", () => {
@@ -201,18 +237,18 @@ test("membersNotConfigured lists call members missing from the config", () => {
   assert.deepEqual(membersNotConfigured(null, cfg()), []);
 });
 
-test("removeUser and renameUserId keep preset user lists valid", () => {
+test("removeUser and renameUserId keep preset user lists valid", async () => {
   const c = removeUser(cfg(), A);
   assert.deepEqual(c.users.map((u) => u.id), [B]);
   assert.deepEqual(c.presets[1].users, [B]);
-  assert.ok(validateConfig(c).ok);
+  await saveConfig(c);
   const r = renameUserId(cfg(), B, C);
   assert.deepEqual(r.users.map((u) => u.id), [A, C]);
   assert.deepEqual(r.presets[1].users, [C, A]);
-  assert.ok(validateConfig(r).ok);
+  await saveConfig(r);
 });
 
-test("duplicatePreset copies with a unique id; deletePreset keeps at least one", () => {
+test("duplicatePreset copies with a unique id; deletePreset keeps at least one", async () => {
   const c = duplicatePreset(cfg(), 1);
   assert.deepEqual(c.presets.map((p) => [p.id, p.name]), [
     ["main", "Principal"],
@@ -222,7 +258,7 @@ test("duplicatePreset copies with a unique id; deletePreset keeps at least one",
   assert.deepEqual(c.presets[2].users, [B, A]);
   c.presets[2].layout.size = 99;
   assert.equal(c.presets[1].layout.size, 160);
-  assert.ok(validateConfig(c).ok);
+  await saveConfig(c);
   const one = deletePreset(deletePreset(cfg(), 0), 0);
   assert.deepEqual(one.presets.map((p) => p.id), ["squad"]);
 });
@@ -261,7 +297,7 @@ test("getAt/setAt read and write config paths used as field ids", () => {
   assert.equal(c.users[1].images.deafened, "z.png");
 });
 
-test("knownPaths lists every editable field so any server error path can be placed", () => {
+test("knownPaths lists every editable field so any server error path can be placed", async () => {
   const c = cfg();
   const known = knownPaths(c);
   for (const p of ["discord.clientId", "users", "presets", "users[1].id", "users[1].images.muted", "presets[1].users", "presets[1].showUnlisted", "presets[0].layout.offsetY", "presets[1].style.offlineText", "presets[0].id"]) {
@@ -273,7 +309,7 @@ test("knownPaths lists every editable field so any server error path can be plac
   c.presets[0].layout.size = 5;
   c.presets[0].style.talkColor = "red";
   c.presets[1].name = "";
-  const { errors } = validateConfig(c);
+  const errors = await rejectConfig(c);
   assert.ok(errors.length >= 5);
   const { summary } = mapErrors(errors, known);
   assert.ok(summary.every((s) => s.target), JSON.stringify(summary));
@@ -285,18 +321,20 @@ test("newPreset builds the same preset the server would default to", () => {
 
 // ---------------------------------------------------------------- S11 canvas
 
-test("CANVASES mirrors the server canvas enum, 2K labelled", () => {
+test("CANVASES mirrors the server canvas enum, 2K labelled", async () => {
   assert.deepEqual(CANVASES.map((c) => c.value).sort(), ["1080x1920", "1280x720", "1920x1080", "2560x1440"]);
   for (const c of CANVASES) {
     const cf = defaultConfig();
     cf.presets[0].canvas = c.value;
-    assert.ok(validateConfig(cf).ok, c.value);
+    assert.equal((await saveConfig(cf, c.value)).presets[0].canvas, c.value);
     assert.equal(`${c.width}x${c.height}`, c.value);
     assert.ok(c.label);
   }
   const bad = defaultConfig();
   bad.presets[0].canvas = "zzz";
-  assert.equal(validateConfig(bad).ok, false);
+  assert.deepEqual(await rejectConfig(bad), [{
+    path: "presets[0].canvas", message: "must be one of 1920x1080, 2560x1440, 1280x720, 1080x1920",
+  }]);
   assert.equal(CANVASES.find((c) => c.value === "2560x1440").label, "2K (2560×1440)");
   assert.equal(newPreset("x", "X").canvas, defaultPreset("x", "X").canvas);
   assert.deepEqual(canvasSize("2560x1440"), { width: 2560, height: 1440 });
@@ -317,14 +355,13 @@ test("obsSetup gives the overlay URL and the exact width/height of the preset ca
   assert.deepEqual([obsSetup(legacy, "").width, obsSetup(legacy, "").height], [1920, 1080]);
 });
 
-test("box placement: old presets stay on the canvas; a box is sized for its people", () => {
+test("box placement: old presets stay on the canvas; a box is sized for its people", async () => {
   const legacy = cfg();
   delete legacy.presets[0].layout.placement;
   delete legacy.presets[0].layout.room;
-  const r = validateConfig(legacy);
-  assert.equal(r.ok, true);
-  assert.equal(r.value.presets[0].layout.placement, "canvas");
-  assert.equal(r.value.presets[0].layout.room, 4);
+  const saved = await saveConfig(legacy);
+  assert.equal(saved.presets[0].layout.placement, "canvas");
+  assert.equal(saved.presets[0].layout.room, 4);
 
   const p = newPreset("box", "Box");
   p.layout = { ...p.layout, placement: "box", direction: "row", size: 100, gap: 10, padding: 0, room: 3 };
@@ -351,9 +388,9 @@ test("box placement: old presets stay on the canvas; a box is sized for its peop
 });
 
 // ---------------------------------------------------------------- S12 templates
-test("editor theme options mirror the server theme enum with human labels", () => {
-  assert.deepEqual(THEMES.map((t) => t.value), SERVER_THEMES);
-  assert.deepEqual(THEMES.map((t) => t.value), ["pixel-cafe", "clean", "neon", "comic", "glass"]);
+test("editor theme options mirror the server theme enum with human labels", async () => {
+  const expected = ["pixel-cafe", "clean", "neon", "comic", "glass"];
+  assert.deepEqual(THEMES.map((t) => t.value), expected);
   const by = Object.fromEntries(THEMES.map((t) => [t.value, t]));
   assert.equal(by.neon.label, "Neón");
   assert.equal(by.comic.label, "Cómic / sticker");
@@ -362,10 +399,15 @@ test("editor theme options mirror the server theme enum with human labels", () =
     assert.ok(t.label && t.description && t.description.length < 120, t.value);
     const c = defaultConfig();
     c.presets[0].theme = t.value;
-    assert.ok(validateConfig(c).ok, t.value);
+    assert.equal((await saveConfig(c, t.value)).presets[0].theme, t.value);
   }
+  const bad = defaultConfig();
+  bad.presets[0].theme = "zzz";
+  assert.deepEqual(await rejectConfig(bad), [{
+    path: "presets[0].theme", message: `must be one of ${expected.join(", ")}`,
+  }]);
   assert.equal(newPreset("x", "X").theme, defaultPreset().theme);
-  for (const tpl of TEMPLATES) if (tpl.preset.theme) assert.ok(SERVER_THEMES.includes(tpl.preset.theme), tpl.key);
+  for (const tpl of TEMPLATES) if (tpl.preset.theme) assert.ok(expected.includes(tpl.preset.theme), tpl.key);
 });
 
 const REQUIRED_TEMPLATES = ["Fila abajo", "Columna al costado", "Squad en grilla", "PNGtuber solo", "Solo quien habla", "Burbujas", "Vertical", "En blanco"];
@@ -395,14 +437,13 @@ test("TEMPLATES include the required ones, each with description and canvas", ()
   assert.deepEqual([by["Fila abajo"].layout.alignX, by["Fila abajo"].layout.alignY], ["center", "bottom"]);
 });
 
-test("presetFromTemplate: every template on every canvas yields a valid config with a unique id", () => {
+test("presetFromTemplate: every template on every canvas yields a valid config with a unique id", async () => {
   for (const tpl of TEMPLATES) {
     for (const canvas of CANVASES.map((c) => c.value)) {
       const base = cfg();
       const r = presetFromTemplate(base, tpl.key, { canvas });
       assert.ok(!r.error, `${tpl.key} ${canvas}`);
-      const v = validateConfig(r.config);
-      assert.ok(v.ok, `${tpl.key} ${canvas}: ${JSON.stringify(v.errors)}`);
+      await saveConfig(r.config, `${tpl.key} ${canvas}`);
       assert.equal(r.index, base.presets.length);
       const ids = r.config.presets.map((p) => p.id);
       assert.equal(new Set(ids).size, ids.length);
@@ -414,7 +455,7 @@ test("presetFromTemplate: every template on every canvas yields a valid config w
   c = presetFromTemplate(c, "fila-abajo").config;
   c = presetFromTemplate(c, "fila-abajo").config;
   assert.equal(new Set(c.presets.map((p) => p.id)).size, c.presets.length);
-  assert.ok(validateConfig(c).ok);
+  await saveConfig(c);
 });
 
 test("presetFromTemplate scales pixel sizes for 2K and keeps the template canvas for vertical", () => {
@@ -433,7 +474,7 @@ test("presetFromTemplate scales pixel sizes for 2K and keeps the template canvas
   assert.equal(d.config.presets[d.index].canvas, "1920x1080");
 });
 
-test("presetFromTemplate: slots templates take the configured users or ask to add them", () => {
+test("presetFromTemplate: slots templates take the configured users or ask to add them", async () => {
   const withUsers = presetFromTemplate(cfg(), "squad");
   assert.deepEqual(withUsers.config.presets[withUsers.index].users, [A, B]);
   assert.equal(withUsers.needsUsers, false);
@@ -443,7 +484,7 @@ test("presetFromTemplate: slots templates take the configured users or ask to ad
   const none = presetFromTemplate(empty, "squad");
   assert.equal(none.needsUsers, true);
   assert.deepEqual(none.config.presets[none.index].users, []);
-  assert.ok(validateConfig(none.config).ok);
+  await saveConfig(none.config);
   assert.equal(presetFromTemplate(empty, "fila-abajo").needsUsers, false);
 });
 
@@ -476,15 +517,15 @@ test("callMembers lists live members with their Discord name and current alias",
   assert.deepEqual(callMembers(null, cfg()), []);
 });
 
-test("setAlias creates, edits and clears aliases within the schema", () => {
+test("setAlias creates, edits and clears aliases within the schema", async () => {
   const m = { id: C, discordName: "Invitada" };
   const created = setAlias(cfg(), m, "Lu");
   assert.deepEqual(created.users.at(-1), { id: C, displayName: "Lu", role: "", roleColor: "", images: { idle: "", talking: "", muted: "", deafened: "" } });
-  assert.ok(validateConfig(created).ok);
+  await saveConfig(created);
   const edited = setAlias(created, m, "L".repeat(60));
   assert.equal(edited.users.filter((u) => u.id === C).length, 1);
   assert.equal(edited.users.find((u) => u.id === C).displayName.length, 40);
-  assert.ok(validateConfig(edited).ok);
+  await saveConfig(edited);
   const cleared = setAlias(edited, m, "");
   assert.equal(cleared.users.find((u) => u.id === C).displayName, "");
   assert.equal(buildTiles(cleared, cleared.presets[0], { members: [{ id: C, name: "Invitada" }] })[0].name, "Invitada");
