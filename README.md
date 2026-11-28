@@ -14,7 +14,7 @@ A free Discord voice overlay for OBS. Everyone in your voice channel appears on 
 - **Live preview** in the editor that can fake a call, so you can design it without anyone online.
 - **Private and free.** It runs on your PC and talks to your own Discord app. No bot joins your call and nothing is uploaded anywhere.
 
-The editor is in Spanish or English and comes in three looks (Studio, Daylight, Pixel), shared with [Kosmik Layouts](https://github.com/kosmik-code/kosmik-layouts).
+The editor is in Spanish or English and comes in three looks (Studio, Daylight, Pixel), shared with [Kosmik Layouts](https://github.com/kosmik-code/kosmik-layouts) and [Kosmik Stagehand](https://github.com/kosmik-code/kosmik-stagehand).
 
 ## What you need
 
@@ -27,7 +27,7 @@ The editor is in Spanish or English and comes in three looks (Studio, Daylight, 
 2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
 3. The editor opens in your browser. Kosmik Voice now lives in the tray, next to the clock: click its icon to open the editor again, right-click it to hide the overlay, quit, or stop it starting with Windows.
 
-It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. To build and launch it yourself, see [Run from source](#run-from-source).
+It's tiny: about a 2.5 MB download, and a few MB of memory while it waits in the tray. To build and launch it yourself, see [Run from source](#run-from-source).
 
 ## Set it up
 
@@ -60,7 +60,7 @@ Changes you save in the editor show up in OBS straight away; no need to refresh 
 
 ## Good to know
 
-- **Kosmik Voice must be running while you stream.** It starts with Windows and waits in the tray, so normally you don't have to think about it. If you quit it, open it again from the Start menu.
+- **Kosmik Voice must be running while you stream.** It starts with Windows and waits in the tray, so normally you don't have to think about it. If you quit it, open it again from the Start menu, or let [Kosmik Stagehand](https://github.com/kosmik-code/kosmik-stagehand) start it when OBS opens.
 - **Several overlays:** each preset has its own OBS address, so you can have a bottom row in one scene and a big grid in another.
 - **Hide it for a moment:** **Ctrl+Alt+Shift+H** (or *Hide the overlay* in the tray menu) fades every overlay out, for a private call or a screen share. Press it again to bring them back. Change the keys (or turn the hotkey off) in **Presets › Hide the overlay**, which also has a button to do it from the editor. A Stream Deck's *Hotkey* action can press it for you. While it's hidden the editor says so, with a button to show it again.
 - **Pressing *Add it to OBS* again** doesn't make a copy: it updates the size of the source that's already there, and adds it to the current scene if it isn't in it yet.
@@ -165,7 +165,7 @@ Set `KV_EDGE` to use a different Edge executable, `KV_SCREENSHOTS` to change the
 
 To build an installer locally, install the Tauri CLI with `cargo install tauri-cli --version '^2' --locked`, then run `cargo tauri build` from `app/`. The NSIS installer is written to `app/target/release/bundle/nsis/`. To sign the updater artifact, set `TAURI_SIGNING_PRIVATE_KEY` to the signing key before building.
 
-Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` (`.github/workflows/release.yml`). The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
+Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` (`.github/workflows/release.yml`). The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, shared with Kosmik Layouts and Kosmik Stagehand, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
 
 | Path | Role |
 |---|---|
@@ -174,7 +174,7 @@ Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs
 | `public/shared/model.js` | Pure tile model and demo voice, shared by the overlay and the editor |
 | `public/overlay/` | OBS overlay page and themes |
 | `public/editor/` | Web editor (`logic.js` is pure and tested) |
-| `public/editor/kosmik-ui.*` | Look shared with Kosmik Layouts (keep both copies identical) |
+| `public/editor/kosmik-ui.*` | Look shared with Kosmik Layouts and Kosmik Stagehand (keep all three copies identical) |
 
 ## License
 
